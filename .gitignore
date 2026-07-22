@@ -1,0 +1,8 @@
+__pycache__
+
+# Notification sounds are personal/binary — keep them out of the repo.
+host/sounds/
+
+# Personal config — everyone brings their own (see the .example files).
+template/scripts/CLAUDE.md
+template/scripts/claude-settings.json

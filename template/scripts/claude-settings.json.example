@@ -1,0 +1,53 @@
+{
+  "model": "opus",
+  "respondToBashCommands": false,
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
+  },
+  "prefersReducedMotion": true,
+  "cleanupPeriodDays": 36500,
+  "permissions": {
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.*.local)",
+      "Read(**/.env.dev)",
+      "Read(**/.env.development)",
+      "Read(**/.env.prod)",
+      "Read(**/.env.production)",
+      "Read(**/.env.staging)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/secrets/**)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 3 -o /dev/null http://host.docker.internal:53999/stop || true"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 3 -o /dev/null http://host.docker.internal:53999/prompt || true"
+          }
+        ]
+      }
+    ]
+  },
+  "tui": "default",
+  "theme": "auto",
+  "preferredNotifChannel": "notifications_disabled",
+  "inputNeededNotifEnabled": false,
+  "agentPushNotifEnabled": false
+}

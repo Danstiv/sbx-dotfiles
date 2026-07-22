@@ -1,0 +1,6 @@
+# Global instructions (environment: Docker Sandbox / sbx)
+#
+# This is a sample. Copy it to CLAUDE.md next to this file (that one is
+# gitignored — everyone keeps their own) and edit it. init-config.py lays
+# CLAUDE.md out to ~/.claude on startup; if the file is absent it just skips
+# that step.

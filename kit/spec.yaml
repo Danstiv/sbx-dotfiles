@@ -1,0 +1,21 @@
+schemaVersion: "1"
+kind: mixin
+name: claude-config
+displayName: Claude config
+description: >-
+  Applies Claude Code config (settings.json, status line, CLAUDE.md) inside the
+  sandbox. Pairs with the claude-code-custom template, which carries the startup
+  scripts under /opt/sbx.
+
+commands:
+  initFiles:
+    - path: /home/agent/.sbx-workdir
+      content: "${WORKDIR}"
+  startup:
+    - command: ["python3", "/opt/sbx/init-config.py"]
+      user: "1000"
+
+agentContext: |
+  uv (the Python package/project manager) and nano are available. Personal
+  Claude Code settings and CLAUDE.md are already laid out under ~/.claude at
+  startup.
