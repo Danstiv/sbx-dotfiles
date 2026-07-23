@@ -8,3 +8,7 @@ alias gca='git commit --amend --no-edit'
 # sandbox recreate). See scripts for details.
 alias claude-backup='/opt/sbx/claude-backup.sh'
 alias claude-restore='/opt/sbx/claude-restore.sh'
+
+# Update Claude Code (bypasses the sandbox proxy the native updater can't use).
+# Also runs automatically at sandbox start.
+alias claude-update='/opt/sbx/claude-update.sh'

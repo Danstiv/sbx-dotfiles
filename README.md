@@ -18,6 +18,7 @@ sbx/
             bashrc-extra.sh       # aliases -> ~/.bashrc
             claude-backup.sh      # snapshot ~/.claude to tar (alias claude-backup)
             claude-restore.sh     # restore a snapshot (alias claude-restore)
+            claude-update.sh      # update Claude at start, bypassing the proxy (alias claude-update)
             CLAUDE.md.example     # sample global CLAUDE.md
             CLAUDE.md             # your personal CLAUDE.md (gitignored)
     kit/spec.yaml                 # startup: invokes /opt/sbx/init-config.py
@@ -98,3 +99,8 @@ clean restore run `rm -rf ~/.claude && claude-restore <file>`.
   tool sees them too. `UV_PROJECT_ENVIRONMENT=/home/agent/.venv` puts the venv on
   the VM's native fs — the workspace mount is a virtiofs passthrough that can't
   create the interpreter symlink uv needs (EPERM).
+- Claude's background auto-updater is off (`DISABLE_AUTOUPDATER=1`) — it can't
+  reach `downloads.claude.ai` through the sandbox's MITM proxy (socket hang up).
+  Instead `claude-update.sh` runs at each start (kit startup) with the proxy env
+  stripped, so the updater uses transparent egress; run `claude-update` by hand
+  anytime. Explicit `claude update` still works with the auto-updater disabled.
