@@ -8,6 +8,10 @@
   "prefersReducedMotion": true,
   "cleanupPeriodDays": 36500,
   "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash"
+    ],
     "deny": [
       "Read(**/.env)",
       "Read(**/.env.local)",
