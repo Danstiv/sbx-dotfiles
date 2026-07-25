@@ -36,11 +36,15 @@ sbx-dotfiles/
 
 ```bash
 ./build-template.sh                                        # build the image and load it into sbx
-sbx run --template claude-code-custom claude --kit ./kit
+sbx run --template claude-code-custom claude --kit ./kit   # first run: creates the sandbox
+sbx run --name <sandbox>                                   # later: re-attach, no flags needed
 ```
 
-A kit is attached only at creation; for an existing sandbox use
-`sbx kit add <sandbox> ./kit`.
+`--template` and `--kit` apply only when the sandbox is created — on re-attach
+they are ignored, and the kit stays part of the sandbox spec. So an **edited**
+kit does not reach an existing sandbox by re-running: use
+`sbx kit add <sandbox> ./kit`, which recreates the container with the kit
+appended, keeping the workspace and kit-owned volumes.
 
 ## Notification sounds (one-time, on Windows)
 
