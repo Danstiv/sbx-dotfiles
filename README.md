@@ -1,13 +1,17 @@
-# Claude Code in Docker Sandbox (sbx)
+# sbx-dotfiles
 
-A personal Claude Code environment inside an isolated sbx microVM: installs
-tools, applies `settings.json`, the status line and `CLAUDE.md`, and wires up
-notification sounds through the host.
+My personal config and image build for [Docker Sandbox](https://docs.docker.com/ai/sandboxes/)
+(sbx). Everything here is currently about running Claude Code inside an sbx
+microVM: it installs tools, applies `settings.json`, the status line and
+`CLAUDE.md`, and wires up notification sounds through the host.
+
+Dotfiles, so the usual caveat applies: this is what works for me, not a product.
+Take the parts you like.
 
 ## Layout
 
 ```
-sbx/
+sbx-dotfiles/
     template/                     # image (docker build)
         Dockerfile                # FROM docker/sandbox-templates:claude-code-docker
         scripts/                  # baked into /opt/sbx
