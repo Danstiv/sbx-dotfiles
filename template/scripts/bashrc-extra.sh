@@ -12,3 +12,7 @@ alias claude-restore='/opt/sbx/claude-restore.sh'
 # Update Claude Code (bypasses the sandbox proxy the native updater can't use).
 # Also runs automatically at sandbox start.
 alias claude-update='/opt/sbx/claude-update.sh'
+
+# Give this repo a ./.venv backed by the VM's native fs (the workspace mount
+# can't hold one). Remounted automatically on later starts.
+alias venv-bind='/opt/sbx/venv-bind.sh'

@@ -3,20 +3,12 @@ FROM docker/sandbox-templates:claude-code-docker
 # Env vars must reach both interactive shells and Claude's non-interactive Bash
 # tool, so they go here (not ~/.bashrc).
 #
-# The venv goes on the VM's native fs, NOT the workspace. The workspace is a
-# virtiofs passthrough of a Windows folder that can't create the interpreter
-# symlink uv needs (fails with EPERM "Operation not permitted"; uv bug astral-sh/uv#2103),
-# and it's slow/incoherent under churn. An absolute path also keeps the venv off
-# the host's own .venv. Caveat: uv uses one absolute UV_PROJECT_ENVIRONMENT for
-# ALL projects — fine in the one-project-per-sandbox model.
-#
 # DISABLE_AUTOUPDATER=1 turns off Claude's background auto-updater — it can't
 # reach downloads.claude.ai through the sandbox's MITM proxy (socket hang up) and
 # just spams errors. Updates happen at sandbox start via /opt/sbx/claude-update.sh
 # instead (it strips the proxy env). Explicit `claude update` still works with
 # this set.
 ENV PYTHON_BASIC_REPL=1 \
-    UV_PROJECT_ENVIRONMENT=/home/agent/.venv \
     DISABLE_AUTOUPDATER=1
 
 USER root
@@ -28,7 +20,7 @@ RUN apt-get update \
 COPY scripts/ /opt/sbx/
 RUN chmod 0755 /opt/sbx/init-config.py /opt/sbx/statusline-command.sh \
                /opt/sbx/claude-backup.sh /opt/sbx/claude-restore.sh \
-               /opt/sbx/claude-update.sh
+               /opt/sbx/claude-update.sh /opt/sbx/venv-bind.sh
 
 USER agent
 RUN claude update

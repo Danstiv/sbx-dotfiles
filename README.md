@@ -23,6 +23,7 @@ sbx-dotfiles/
             claude-backup.sh      # snapshot ~/.claude to tar (alias claude-backup)
             claude-restore.sh     # restore a snapshot (alias claude-restore)
             claude-update.sh      # update Claude at start, bypassing the proxy (alias claude-update)
+            venv-bind.sh          # per-repo .venv on native fs, remounted at start (alias venv-bind)
             CLAUDE.md.example     # sample global CLAUDE.md
             CLAUDE.md             # your personal CLAUDE.md (gitignored)
     kit/spec.yaml                 # startup: invokes /opt/sbx/init-config.py
@@ -97,6 +98,35 @@ to the host, so it survives a recreate. `claude-restore` extracts over `~`
 (merge: files from the archive overwrite, everything else is left alone); for a
 clean restore run `rm -rf ~/.claude && claude-restore <file>`.
 
+## Python venvs (`venv-bind`)
+
+A repo's `.venv` cannot live on the workspace: it is a virtiofs passthrough of a
+host folder, and it refuses the interpreter symlink uv creates (EPERM,
+[uv#2103](https://github.com/astral-sh/uv/issues/2103)). So the venv is stored on
+the VM's native fs and bind-mounted onto `<repo>/.venv`, where every tool expects
+it:
+
+```bash
+cd /d/dev/myrepo && venv-bind      # once per repo
+uv sync                            # now works, .venv is real
+```
+
+Bind mounts are mount-namespace state — they vanish when the sandbox stops,
+though their backing dirs (`~/.venvs/`) do not. Each bind is recorded in
+`~/.venv-binds` and replayed at every start by the kit
+(`venv-bind.sh --restore`). `venv-bind --list` shows what is registered and
+whether it is currently up; `venv-bind --unbind <dir>` drops one.
+
+The simpler alternative is `UV_PROJECT_ENVIRONMENT=/home/agent/.venv`, which
+moves the venv off the mount without any mounting of its own. It works well when
+a sandbox holds a single project, but the path is absolute and global, so every
+repo in a multi-repo workspace ends up sharing one venv — hence the binds. Note
+the two do not combine: setting that variable overrides `./.venv` discovery and
+the binds stop mattering.
+
+Recreating the sandbox wipes `~/.venvs` along with the rest of the writable
+layer; `uv sync` rebuilds them.
+
 ## Notes
 
 - `init-config.py` is idempotent (marker `~/.claude/.sbx-config-initialized`):
@@ -104,9 +134,11 @@ clean restore run `rm -rf ~/.claude && claude-restore <file>`.
 - On startup sbx generates a `CLAUDE.md` next to the workspace; `init-config.py`
   removes it by signature (a hand-written CLAUDE.md is left untouched).
 - Env vars are set via `ENV` in the Dockerfile so Claude's non-interactive Bash
-  tool sees them too. `UV_PROJECT_ENVIRONMENT=/home/agent/.venv` puts the venv on
-  the VM's native fs — the workspace mount is a virtiofs passthrough that can't
-  create the interpreter symlink uv needs (EPERM).
+  tool sees them too.
+- Kit `startup` commands run on **every** sandbox start, not only at creation
+  (verified) — which is what makes the venv remount and the update check work.
+  The kit itself, however, is captured at creation: editing `kit/spec.yaml` does
+  not reach an existing sandbox until `sbx kit add`.
 - Claude's background auto-updater is off (`DISABLE_AUTOUPDATER=1`) — it can't
   reach `downloads.claude.ai` through the sandbox's MITM proxy (socket hang up).
   Instead `claude-update.sh` runs at each start (kit startup) with the proxy env
