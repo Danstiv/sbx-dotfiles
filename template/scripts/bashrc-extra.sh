@@ -1,18 +1,6 @@
 # --- sbx personal shell config (appended to ~/.bashrc at build) ---
-# Interactive-only bits go here. Env vars that must also reach Claude's
-# non-interactive Bash tool live as ENV in the Dockerfile instead.
+# Interactive-only bits go here. Anything that must also work outside an
+# interactive shell belongs elsewhere: env vars as ENV in the Dockerfile,
+# commands as executables in bin/ (they land on PATH via /opt/sbx/bin).
 
 alias gca='git commit --amend --no-edit'
-
-# Snapshot / restore ~/.claude (writes to the workspace mount so it survives a
-# sandbox recreate). See scripts for details.
-alias claude-backup='/opt/sbx/claude-backup.sh'
-alias claude-restore='/opt/sbx/claude-restore.sh'
-
-# Update Claude Code (bypasses the sandbox proxy the native updater can't use).
-# Also runs automatically at sandbox start.
-alias claude-update='/opt/sbx/claude-update.sh'
-
-# Give this repo a ./.venv backed by the VM's native fs (the workspace mount
-# can't hold one). Remounted automatically on later starts.
-alias venv-bind='/opt/sbx/venv-bind.sh'

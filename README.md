@@ -14,16 +14,17 @@ Take the parts you like.
 sbx-dotfiles/
     template/                     # image (docker build)
         Dockerfile                # FROM docker/sandbox-templates:claude-code-docker
-        scripts/                  # baked into /opt/sbx
+        bin/                      # -> /opt/sbx/bin, which is on PATH
+            claude-backup         # snapshot ~/.claude to a tarball
+            claude-restore        # restore such a snapshot
+            claude-update         # update Claude, bypassing the proxy; also runs at start
+            venv-bind             # per-repo .venv on native fs, remounted at start
+        scripts/                  # -> /opt/sbx, plain data
             init-config.py        # lays out ~/.claude on startup (idempotent)
             claude-settings.json.example # sample settings.json
             claude-settings.json  # your settings.json, deep-merged over the base (gitignored)
             statusline-command.sh # status line
-            bashrc-extra.sh       # aliases -> ~/.bashrc
-            claude-backup.sh      # snapshot ~/.claude to tar (alias claude-backup)
-            claude-restore.sh     # restore a snapshot (alias claude-restore)
-            claude-update.sh      # update Claude at start, bypassing the proxy (alias claude-update)
-            venv-bind.sh          # per-repo .venv on native fs, remounted at start (alias venv-bind)
+            bashrc-extra.sh       # interactive-only shell bits -> ~/.bashrc
             CLAUDE.md.example     # sample global CLAUDE.md
             CLAUDE.md             # your personal CLAUDE.md (gitignored)
     kit/spec.yaml                 # startup: invokes /opt/sbx/init-config.py
@@ -83,7 +84,7 @@ is absent it simply skips that step (the build does not fail).
 
 Everything in the VM except the working directory is ephemeral — on a sandbox
 recreate `~/.claude` (session history, memory, config edits) is wiped. Two
-aliases are baked into the image:
+commands are baked into the image:
 
 ```bash
 claude-backup            # -> ./claude-home.tar.gz (in the working dir = on the mount)
@@ -114,7 +115,7 @@ uv sync                            # now works, .venv is real
 Bind mounts are mount-namespace state — they vanish when the sandbox stops,
 though their backing dirs (`~/.venvs/`) do not. Each bind is recorded in
 `~/.venv-binds` and replayed at every start by the kit
-(`venv-bind.sh --restore`). `venv-bind --list` shows what is registered and
+(`venv-bind --restore`). `venv-bind --list` shows what is registered and
 whether it is currently up; `venv-bind --unbind <dir>` drops one.
 
 The simpler alternative is `UV_PROJECT_ENVIRONMENT=/home/agent/.venv`, which
@@ -150,6 +151,6 @@ Use `UV_LINK_MODE=copy` if you would rather pay the disk than the coupling.
   not reach an existing sandbox until `sbx kit add`.
 - Claude's background auto-updater is off (`DISABLE_AUTOUPDATER=1`) — it can't
   reach `downloads.claude.ai` through the sandbox's MITM proxy (socket hang up).
-  Instead `claude-update.sh` runs at each start (kit startup) with the proxy env
+  Instead `claude-update` runs at each start (kit startup) with the proxy env
   stripped, so the updater uses transparent egress; run `claude-update` by hand
   anytime. Explicit `claude update` still works with the auto-updater disabled.
