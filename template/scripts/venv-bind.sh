@@ -19,6 +19,10 @@
 #
 # The backing dirs live in ~/.venvs and are wiped when the sandbox is recreated
 # — venvs are rebuildable, `uv sync` brings them back.
+#
+# Side effect of mounting: hardlinks cannot cross a mount boundary (EXDEV, even
+# on one filesystem), so uv cannot hardlink from its cache into a bound .venv.
+# The image sets UV_LINK_MODE=symlink for that reason.
 set -u
 
 REGISTRY="$HOME/.venv-binds"

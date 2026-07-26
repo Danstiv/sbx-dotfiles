@@ -127,6 +127,15 @@ the binds stop mattering.
 Recreating the sandbox wipes `~/.venvs` along with the rest of the writable
 layer; `uv sync` rebuilds them.
 
+One consequence of the binds is worth knowing: the kernel refuses hardlinks
+across a mount boundary (`EXDEV`) even when both sides are on the same
+filesystem, so uv cannot hardlink from its cache into a bound `.venv` and warns
+that it is "falling back to full copy". That is why the image sets
+`UV_LINK_MODE=symlink` — cross-mount symlinks are allowed, so the cache stays
+shared and nothing is duplicated. The catch is that a venv then references cache
+entries, so `uv cache clean` invalidates existing venvs; `uv sync` repairs them.
+Use `UV_LINK_MODE=copy` if you would rather pay the disk than the coupling.
+
 ## Notes
 
 - `init-config.py` is idempotent (marker `~/.claude/.sbx-config-initialized`):
