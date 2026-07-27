@@ -16,16 +16,13 @@ commands:
       user: "1000"
     - command: ["/opt/sbx/bin/claude-update"]
       user: "1000"
-    # Bind mounts do not survive a sandbox stop; this replays the registered
-    # per-repo venv binds on every start.
-    - command: ["/opt/sbx/bin/venv-bind", "--restore"]
-      user: "1000"
 
 agentContext: |
   uv (the Python package/project manager) and nano are available. Personal
   Claude Code settings and CLAUDE.md are already laid out under ~/.claude at
   startup.
 
-  A repo's .venv cannot live on the workspace mount (it refuses the symlink uv
-  creates). Run `venv-bind` once in a repo to give it a ./.venv backed by the
-  VM's native filesystem; it is remounted automatically on later starts.
+  A venv cannot live on the workspace mount (it refuses the symlinks a venv
+  needs). `uv` is wrapped so that each project gets one under ~/.venvs instead —
+  nothing to set up, but note there is no ./.venv in the repo: activate via
+  `$(uv python find)` or just use `uv run`.

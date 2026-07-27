@@ -9,20 +9,12 @@ FROM docker/sandbox-templates:claude-code-docker
 # command instead (it strips the proxy env). Explicit `claude update` still
 # works with this set.
 #
-# UV_LINK_MODE=symlink because venvs here are bind mounts (see the venv-bind
-# command) and the kernel refuses hardlinks across a mount boundary — EXDEV even
-# when both sides sit on the same filesystem. uv's default would try to hardlink
-# from its cache, fail, and fall back to copying every file into every repo's
-# venv. Cross-mount symlinks are fine, so the cache stays shared and nothing is
-# copied. The trade-off: a venv then depends on its cache entries, so
-# `uv cache clean` breaks existing venvs (re-run `uv sync`). Use copy if that
-# bites.
-#
 # PATH gains /opt/sbx/bin so the commands in bin/ are callable everywhere —
-# interactive shells, Claude's Bash tool, `sbx exec`, scripts.
+# interactive shells, Claude's Bash tool, `sbx exec`, scripts. It also has to
+# come first: the claude and uv wrappers there only work by shadowing the real
+# binaries.
 ENV PYTHON_BASIC_REPL=1 \
     DISABLE_AUTOUPDATER=1 \
-    UV_LINK_MODE=symlink \
     PATH=/opt/sbx/bin:$PATH
 
 USER root

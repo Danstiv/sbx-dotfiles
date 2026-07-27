@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Point uv at a per-repo virtual environment on the VM's native filesystem.
+#
+# A venv cannot live in the workspace at all. The workspace is a virtiofs
+# passthrough of a host folder and it refuses to create symlinks (EPERM), while
+# every venv needs them: uv symlinks the interpreter, and even
+# `python -m venv --copies` still creates lib64 -> lib. Mounting a native
+# directory onto <repo>/.venv does not work either — renaming any file in an
+# ancestor directory invalidates the mountpoint's dentry, and the kernel then
+# detaches the mount (so `git restore` silently kills it).
+#
+# That leaves pointing uv elsewhere. uv reads this location only from
+# UV_PROJECT_ENVIRONMENT — there is no pyproject.toml or uv.toml equivalent — and
+# a single absolute value would be shared by every repo in the sandbox. So this
+# wrapper derives one per project, on each invocation. Doing it per invocation
+# (rather than in ~/.bashrc or via direnv) is what makes it work in Claude's
+# non-interactive Bash tool as well.
+#
+#   UV_PROJECT_ENVIRONMENT   already set -> respected, the wrapper stays out
+#   VIRTUAL_ENV              an activated venv wins too
+#   SBX_VENV_DIR             where venvs are kept (default ~/.venvs)
+set -u
+
+source /opt/sbx/shim-lib.sh
+real=$(resolve_real "$0") || exit $?
+
+# Walk up to the project root: the nearest directory holding pyproject.toml.
+project_root() {
+  local dir=$PWD
+  while [ "$dir" != "/" ]; do
+    [ -f "$dir/pyproject.toml" ] && { printf '%s' "$dir"; return 0; }
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
+if [ -z "${UV_PROJECT_ENVIRONMENT:-}" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
+  if root=$(project_root); then
+    # Readable but collision-free: the repo name plus a hash of its full path.
+    name=$(basename "$root")-$(printf '%s' "$root" | sha1sum | cut -c1-12)
+    export UV_PROJECT_ENVIRONMENT="${SBX_VENV_DIR:-$HOME/.venvs}/$name"
+  fi
+fi
+
+exec "$real" "$@"

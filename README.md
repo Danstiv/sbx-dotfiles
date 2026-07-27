@@ -16,11 +16,12 @@ sbx-dotfiles/
         Dockerfile                # FROM docker/sandbox-templates:claude-code-docker
         bin/                      # -> /opt/sbx/bin, which is on PATH
             claude                # wrapper that drops sbx's --dangerously-skip-permissions
+            uv                    # wrapper that puts each repo's venv on native fs
             claude-backup         # snapshot ~/.claude to a tarball
             claude-restore        # restore such a snapshot
             claude-update         # update Claude, bypassing the proxy; also runs at start
-            venv-bind             # per-repo .venv on native fs, remounted at start
         scripts/                  # -> /opt/sbx, plain data
+            shim-lib.sh           # shared helper sourced by the wrappers
             init-config.py        # lays out ~/.claude on startup (idempotent)
             claude-settings.json.example # sample settings.json
             claude-settings.json  # your settings.json, deep-merged over the base (gitignored)
@@ -119,43 +120,40 @@ the container command with a keep-alive (`tini -- sh -c 'sleep infinity'`) and
 starts the agent separately, so `CMD` never runs. Verified by building with
 `CMD ["claude", "--marker-from-cmd"]`: the marker never reached the wrapper.
 
-## Python venvs (`venv-bind`)
+## Python venvs
 
-A repo's `.venv` cannot live on the workspace: it is a virtiofs passthrough of a
-host folder, and it refuses the interpreter symlink uv creates (EPERM,
-[uv#2103](https://github.com/astral-sh/uv/issues/2103)). So the venv is stored on
-the VM's native fs and bind-mounted onto `<repo>/.venv`, where every tool expects
-it:
+A venv cannot live in the workspace at all. The workspace is a virtiofs
+passthrough of a host folder and it refuses to create symlinks (EPERM), while
+every venv needs them — uv symlinks the interpreter
+([uv#2103](https://github.com/astral-sh/uv/issues/2103)), and even
+`python -m venv --copies` still creates `lib64 -> lib`.
 
-```bash
-cd /d/dev/myrepo && venv-bind      # once per repo
-uv sync                            # now works, .venv is real
-```
+So `bin/uv` is a wrapper: it walks up from the current directory to the nearest
+`pyproject.toml` and points `UV_PROJECT_ENVIRONMENT` at
+`~/.venvs/<repo>-<hash>`, on the VM's native filesystem. Nothing to set up —
+`uv sync` in any repo just works, and each repo gets its own environment.
+Set `UV_PROJECT_ENVIRONMENT` or `VIRTUAL_ENV` yourself and the wrapper stays out
+of the way; `SBX_VENV_DIR` moves where the venvs are kept.
 
-Bind mounts are mount-namespace state — they vanish when the sandbox stops,
-though their backing dirs (`~/.venvs/`) do not. Each bind is recorded in
-`~/.venv-binds` and replayed at every start by the kit
-(`venv-bind --restore`). `venv-bind --list` shows what is registered and
-whether it is currently up; `venv-bind --unbind <dir>` drops one.
+The visible trade-off: **there is no `./.venv` in the repo**. Use `uv run`, or
+activate explicitly with `source "$UV_PROJECT_ENVIRONMENT/bin/activate"`. As a
+side effect a Windows-side `.venv` in the same folder is never touched.
 
-The simpler alternative is `UV_PROJECT_ENVIRONMENT=/home/agent/.venv`, which
-moves the venv off the mount without any mounting of its own. It works well when
-a sandbox holds a single project, but the path is absolute and global, so every
-repo in a multi-repo workspace ends up sharing one venv — hence the binds. Note
-the two do not combine: setting that variable overrides `./.venv` discovery and
-the binds stop mattering.
+Why a wrapper rather than something simpler: uv takes this path only from the
+environment variable (there is no `pyproject.toml` or `uv.toml` equivalent), and
+one absolute value would be shared by every repo in the sandbox. Computing it per
+invocation is also what makes it work in Claude's non-interactive Bash tool,
+where a shell function or direnv would not fire.
+
+Mounting a native directory onto `<repo>/.venv` was tried and does not work:
+renaming any file in an ancestor directory invalidates the mountpoint's dentry
+and the kernel detaches the mount (`d_invalidate` → `detach_mounts`), so a plain
+`git restore` silently kills it, after which uv writes a broken half-venv into
+the repo. Passthrough filesystems invalidate dentries because the host owns the
+truth about names; on ext4 this never happens.
 
 Recreating the sandbox wipes `~/.venvs` along with the rest of the writable
 layer; `uv sync` rebuilds them.
-
-One consequence of the binds is worth knowing: the kernel refuses hardlinks
-across a mount boundary (`EXDEV`) even when both sides are on the same
-filesystem, so uv cannot hardlink from its cache into a bound `.venv` and warns
-that it is "falling back to full copy". That is why the image sets
-`UV_LINK_MODE=symlink` — cross-mount symlinks are allowed, so the cache stays
-shared and nothing is duplicated. The catch is that a venv then references cache
-entries, so `uv cache clean` invalidates existing venvs; `uv sync` repairs them.
-Use `UV_LINK_MODE=copy` if you would rather pay the disk than the coupling.
 
 ## Notes
 
@@ -166,9 +164,9 @@ Use `UV_LINK_MODE=copy` if you would rather pay the disk than the coupling.
 - Env vars are set via `ENV` in the Dockerfile so Claude's non-interactive Bash
   tool sees them too.
 - Kit `startup` commands run on **every** sandbox start, not only at creation
-  (verified) — which is what makes the venv remount and the update check work.
-  The kit itself, however, is captured at creation: editing `kit/spec.yaml` does
-  not reach an existing sandbox until `sbx kit add`.
+  (verified) — which is what makes the update check work. The kit itself,
+  however, is captured at creation: editing `kit/spec.yaml` does not reach an
+  existing sandbox until `sbx kit add`.
 - Claude's background auto-updater is off (`DISABLE_AUTOUPDATER=1`) — it can't
   reach `downloads.claude.ai` through the sandbox's MITM proxy (socket hang up).
   Instead `claude-update` runs at each start (kit startup) with the proxy env

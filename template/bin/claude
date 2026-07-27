@@ -14,21 +14,8 @@
 #   SBX_SHIM_DEBUG=1     log the argv this wrapper received to /tmp/claude-shim.log
 set -u
 
-self=$(readlink -f "$0")
-real=""
-IFS=: read -ra path_dirs <<< "$PATH"
-for dir in "${path_dirs[@]}"; do
-  candidate="$dir/claude"
-  [ -x "$candidate" ] || continue
-  [ "$(readlink -f "$candidate")" = "$self" ] && continue
-  real="$candidate"
-  break
-done
-
-if [ -z "$real" ]; then
-  echo "claude: real binary not found on PATH (wrapper at $self)" >&2
-  exit 127
-fi
+source /opt/sbx/shim-lib.sh
+real=$(resolve_real "$0") || exit $?
 
 if [ "${SBX_SHIM_DEBUG:-}" = "1" ]; then
   printf '%s argv:' "$(date -Is)" >> /tmp/claude-shim.log
