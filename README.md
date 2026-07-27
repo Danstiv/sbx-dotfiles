@@ -20,6 +20,7 @@ sbx-dotfiles/
             claude-backup         # snapshot ~/.claude to a tarball
             claude-restore        # restore such a snapshot
             claude-update         # update Claude, bypassing the proxy; also runs at start
+            play-sound            # ask the host's http_player to play a sound (hooks)
         scripts/                  # -> /opt/sbx, plain data
             shim-lib.sh           # shared helper sourced by the wrappers
             init-config.py        # lays out ~/.claude on startup (idempotent)
@@ -65,18 +66,9 @@ Then allow the port once, so the sandbox may reach it:
 sbx policy allow network localhost:57919
 ```
 
-The hooks in `claude-settings.json.example` assume http_player's defaults —
-port `57919`, and sounds named `stop.wav` and `prompt.wav`:
-
-```
-curl -s -m 3 -o /dev/null -X POST http://host.docker.internal:57919/play \
-     -H 'Content-Type: application/json' -d '{"file_name": "stop.wav"}' || true
-```
-
-Change the port in both places if you configure http_player differently. The
-`|| true` and the short timeout keep the hook harmless when the player is not
-running. On Windows http_player also exposes `/speak`, which talks to a running
-NVDA instance — a hook can say something instead of playing a file.
+The hooks are just `play-sound stop` and `play-sound prompt` — that command
+wraps the request and assumes http_player's defaults (port `57919`, sounds named
+`stop.wav` and `prompt.wav`). See the script for the rest.
 
 ## Personal config
 

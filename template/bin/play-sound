@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Play a sound on the host, for use from Claude Code hooks.
+#
+# There is no audio in the VM, and the sandbox blocks raw UDP/TCP — the only way
+# out is HTTP to the host, where http_player (https://github.com/25k1/http_player)
+# is listening. It resolves the file against its own sounds/ directory, so the
+# argument is just a name.
+#
+#   play-sound stop            -> stop.wav
+#   play-sound prompt.wav      -> the same, spelled out
+#   play-sound stop 40         -> quieter (volume is a percentage)
+#
+# Never fails: a hook must not break the session because the player is not
+# running, so this always exits 0 and stays silent.
+#
+#   SBX_PLAYER_HOST   default host.docker.internal
+#   SBX_PLAYER_PORT   default 57919 (http_player's own default)
+set -u
+
+name=${1:-}
+volume=${2:-}
+
+if [ -z "$name" ]; then
+  echo "usage: play-sound <name>[.wav] [volume]" >&2
+  exit 0
+fi
+
+case "$name" in
+  *.*) ;;
+  *) name="$name.wav" ;;
+esac
+
+if [ -n "$volume" ]; then
+  payload=$(printf '{"file_name": "%s", "volume": %s}' "$name" "$volume")
+else
+  payload=$(printf '{"file_name": "%s"}' "$name")
+fi
+
+curl -s -m 3 -o /dev/null \
+  -X POST "http://${SBX_PLAYER_HOST:-host.docker.internal}:${SBX_PLAYER_PORT:-57919}/play" \
+  -H 'Content-Type: application/json' \
+  -d "$payload" 2>/dev/null
+
+exit 0
