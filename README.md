@@ -145,8 +145,7 @@ So `bin/uv` is a wrapper: it walks up from the current directory to the nearest
 Set `UV_PROJECT_ENVIRONMENT` or `VIRTUAL_ENV` yourself and the wrapper stays out
 of the way; `SBX_VENV_DIR` moves where the venvs are kept.
 
-The visible trade-off: **there is no `./.venv` in the repo**. Use `uv run`, or
-activate explicitly with `source "$UV_PROJECT_ENVIRONMENT/bin/activate"`. As a
+The visible trade-off: **there is no `./.venv` in the repo** — use `uv run`. As a
 side effect a Windows-side `.venv` in the same folder is never touched.
 
 Why a wrapper rather than something simpler: uv takes this path only from the
