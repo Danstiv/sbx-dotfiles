@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Wrapper around Claude Code that drops --dangerously-skip-permissions.
+#
+# sbx hardcodes that flag when it launches the agent (the string is baked into
+# sbx.exe, it is not a sandbox setting), and the flag overrides
+# permissions.defaultMode from settings.json — so the mode configured there is
+# ignored. This wrapper sits earlier in PATH than the real binary and removes
+# the flag, which lets settings.json decide again.
+#
+# Dropping it is safe in this environment: the isolation that matters is the
+# sandbox itself (a microVM plus sbx network policy), not the in-agent prompt.
+#
+#   SBX_ALLOW_BYPASS=1   keep the flag, i.e. restore sbx's own behaviour
+#   SBX_SHIM_DEBUG=1     log the argv this wrapper received to /tmp/claude-shim.log
+set -u
+
+self=$(readlink -f "$0")
+real=""
+IFS=: read -ra path_dirs <<< "$PATH"
+for dir in "${path_dirs[@]}"; do
+  candidate="$dir/claude"
+  [ -x "$candidate" ] || continue
+  [ "$(readlink -f "$candidate")" = "$self" ] && continue
+  real="$candidate"
+  break
+done
+
+if [ -z "$real" ]; then
+  echo "claude: real binary not found on PATH (wrapper at $self)" >&2
+  exit 127
+fi
+
+if [ "${SBX_SHIM_DEBUG:-}" = "1" ]; then
+  printf '%s argv:' "$(date -Is)" >> /tmp/claude-shim.log
+  printf ' %q' "$@" >> /tmp/claude-shim.log
+  printf '\n' >> /tmp/claude-shim.log
+fi
+
+if [ "${SBX_ALLOW_BYPASS:-}" = "1" ]; then
+  exec "$real" "$@"
+fi
+
+args=()
+for arg in "$@"; do
+  [ "$arg" = "--dangerously-skip-permissions" ] && continue
+  args+=("$arg")
+done
+
+exec "$real" ${args[@]+"${args[@]}"}

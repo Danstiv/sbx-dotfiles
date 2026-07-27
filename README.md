@@ -15,6 +15,7 @@ sbx-dotfiles/
     template/                     # image (docker build)
         Dockerfile                # FROM docker/sandbox-templates:claude-code-docker
         bin/                      # -> /opt/sbx/bin, which is on PATH
+            claude                # wrapper that drops sbx's --dangerously-skip-permissions
             claude-backup         # snapshot ~/.claude to a tarball
             claude-restore        # restore such a snapshot
             claude-update         # update Claude, bypassing the proxy; also runs at start
@@ -98,6 +99,25 @@ By default the archive is written to the current directory — which is bind-mou
 to the host, so it survives a recreate. `claude-restore` extracts over `~`
 (merge: files from the archive overwrite, everything else is left alone); for a
 clean restore run `rm -rf ~/.claude && claude-restore <file>`.
+
+## Permission mode
+
+sbx launches the agent as `claude --dangerously-skip-permissions` — the flag is
+baked into `sbx.exe`, it is not a sandbox setting, and it overrides
+`permissions.defaultMode` in `settings.json`, so whatever you configure there is
+ignored.
+
+`bin/claude` is a wrapper that sits earlier in `PATH` than the real binary and
+removes the flag, which hands the decision back to `settings.json`. Verified:
+with `SBX_SHIM_DEBUG=1` the wrapper logs `argv: --dangerously-skip-permissions
+--version`, i.e. sbx resolves `claude` through `PATH` and the interception
+holds. Set `SBX_ALLOW_BYPASS=1` to keep sbx's original behaviour.
+
+There is no supported setting for this: Claude Code has no managed-settings key
+that disables bypass mode. The image's `CMD` is no help either — sbx replaces
+the container command with a keep-alive (`tini -- sh -c 'sleep infinity'`) and
+starts the agent separately, so `CMD` never runs. Verified by building with
+`CMD ["claude", "--marker-from-cmd"]`: the marker never reached the wrapper.
 
 ## Python venvs (`venv-bind`)
 

@@ -31,14 +31,21 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends nano \
  && rm -rf /var/lib/apt/lists/*
 
-# Commands go on PATH (see ENV above); assets stay plain data. Nothing needs an
-# explicit chmod: --chmod covers everything in bin/, init-config.py runs under
-# python3, and statusline-command.sh is installed with its own mode by
-# init-config.py.
-COPY --chmod=0755 bin/ /opt/sbx/bin/
-COPY scripts/ /opt/sbx/
-
 USER agent
 RUN claude update
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Config comes last on purpose: editing a script must not invalidate the layers
+# above (`claude update` alone takes minutes).
+#
+# Commands go on PATH (see ENV above); assets stay plain data. --chmod covers
+# both, so no chmod step has to be kept in sync by hand — and it normalises the
+# mode, which otherwise comes from the host fs (0777 on a Windows mount).
+# init-config.py runs under python3 and statusline-command.sh is installed with
+# its own mode by init-config.py, so neither needs to be executable here.
+USER root
+COPY --chmod=0755 bin/ /opt/sbx/bin/
+COPY --chmod=0644 scripts/ /opt/sbx/
+
+USER agent
 RUN cat /opt/sbx/bashrc-extra.sh >> /home/agent/.bashrc
