@@ -46,4 +46,4 @@ for arg in "$@"; do
   args+=("$arg")
 done
 
-exec "$real" ${args[@]+"${args[@]}"}
+exec "$real" "${args[@]}"
