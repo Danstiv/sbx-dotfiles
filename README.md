@@ -2,8 +2,8 @@
 
 My personal config and image build for [Docker Sandbox](https://docs.docker.com/ai/sandboxes/)
 (sbx). Everything here is currently about running Claude Code inside an sbx
-microVM: it installs tools, applies `settings.json`, the status line and
-`CLAUDE.md`, and wires up notification sounds through the host.
+microVM: it installs tools and applies `settings.json`, the status line and
+`CLAUDE.md`.
 
 Dotfiles, so the usual caveat applies: this is what works for me, not a product.
 Take the parts you like.
@@ -30,9 +30,6 @@ sbx-dotfiles/
             CLAUDE.md.example     # sample global CLAUDE.md
             CLAUDE.md             # your personal CLAUDE.md (gitignored)
     kit/spec.yaml                 # startup: invokes /opt/sbx/init-config.py
-    host/                         # RUNS ON WINDOWS
-        notify-daemon.ps1         # HTTP -> plays .wav from ./sounds
-        sounds/                   # stop.wav / prompt.wav (gitignored)
     build-template.sh             # docker build -> save -> sbx template load
 ```
 
@@ -50,23 +47,36 @@ kit does not reach an existing sandbox by re-running: use
 `sbx kit add <sandbox> ./kit`, which recreates the container with the kit
 appended, keeping the workspace and kit-owned volumes.
 
-## Notification sounds (one-time, on Windows)
+## Notification sounds (optional, set up on the host)
 
-There is no audio inside the VM — the signal goes to the host over HTTP (the
-sandbox blocks raw UDP/TCP at the network layer). A daemon runs on Windows and
-plays the `.wav`; the `Stop` / `Notification` hooks poke it via
-`host.docker.internal`.
+There is no audio inside the VM, and the sandbox blocks raw UDP/TCP at the
+network layer — the only way out is HTTP to the host. So the `Stop` and
+`Notification` hooks in the settings just POST to a small player running on the
+host.
+
+Nothing for that is shipped here. If you want sounds, grab a release of
+[http_player](https://github.com/25k1/http_player) (prebuilt for Windows and
+Linux) and set it up yourself: put your `.wav` files in its `sounds/` folder,
+start it, and arrange for it to run at logon however you prefer.
+
+Then allow the port once, so the sandbox may reach it:
 
 ```powershell
-sbx policy allow network localhost:53999          # allow the port (once)
-powershell -NoProfile -ExecutionPolicy Bypass -File host\notify-daemon.ps1
+sbx policy allow network localhost:57919
 ```
 
-Sounds live in `host/sounds/`: `stop.wav` (the Stop event) and `prompt.wav`
-(Notification). The daemon finds the folder next to itself. It is gitignored —
-drop your own two files with those names there. The port is set at the top of
-`notify-daemon.ps1`; for auto-start at logon use a scheduled task
-(`Register-ScheduledTask ... -AtLogOn`, example in the script).
+The hooks in `claude-settings.json.example` assume http_player's defaults —
+port `57919`, and sounds named `stop.wav` and `prompt.wav`:
+
+```
+curl -s -m 3 -o /dev/null -X POST http://host.docker.internal:57919/play \
+     -H 'Content-Type: application/json' -d '{"file_name": "stop.wav"}' || true
+```
+
+Change the port in both places if you configure http_player differently. The
+`|| true` and the short timeout keep the hook harmless when the player is not
+running. On Windows http_player also exposes `/speak`, which talks to a running
+NVDA instance — a hook can say something instead of playing a file.
 
 ## Personal config
 

@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -s -m 3 -o /dev/null http://host.docker.internal:53999/stop || true"
+            "command": "curl -s -m 3 -o /dev/null -X POST http://host.docker.internal:57919/play -H 'Content-Type: application/json' -d '{\"file_name\": \"stop.wav\"}' || true"
           }
         ]
       }
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -s -m 3 -o /dev/null http://host.docker.internal:53999/prompt || true"
+            "command": "curl -s -m 3 -o /dev/null -X POST http://host.docker.internal:57919/play -H 'Content-Type: application/json' -d '{\"file_name\": \"prompt.wav\"}' || true"
           }
         ]
       }
