@@ -54,6 +54,8 @@ trap start_daemon EXIT
 # -mindepth 1: empty the volume, keep the mount point itself.
 sudo find "$DATA_ROOT" -mindepth 1 -delete
 
+echo Restoring
+
 zstd -dc "$SRC" \
   | sudo tar -C "$DATA_ROOT" -xf - \
       --numeric-owner --xattrs --xattrs-include='*' --acls -p

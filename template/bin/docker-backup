@@ -31,6 +31,8 @@ source /opt/sbx/docker-daemon.sh
 stop_daemon
 trap start_daemon EXIT
 
+echo "Backing up"
+
 # --numeric-owner: uids must not be remapped through /etc/passwd on restore.
 # --xattrs-include='*': the default is user.* only, which silently drops the
 # trusted.overlay.* attributes marking opaque directories — lose those and
