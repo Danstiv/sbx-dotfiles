@@ -20,9 +20,12 @@ sbx-dotfiles/
             claude-backup         # snapshot ~/.claude to a tarball
             claude-restore        # restore such a snapshot
             claude-update         # update Claude, bypassing the proxy; also runs at start
+            docker-backup         # snapshot /var/lib/docker onto the workspace
+            docker-restore        # restore such a snapshot
             play-sound            # ask the host's http_player to play a sound (hooks)
         scripts/                  # -> /opt/sbx, plain data
             shim-lib.sh           # shared helper sourced by the wrappers
+            docker-daemon.sh      # stop/start dockerd, sourced by the docker-* commands
             init-config.py        # lays out ~/.claude on startup (idempotent)
             claude-settings.json.example # sample settings.json
             claude-settings.json  # your settings.json, deep-merged over the base (gitignored)
@@ -102,6 +105,25 @@ By default the archive is written to the current directory — which is bind-mou
 to the host, so it survives a recreate. `claude-restore` extracts over `~`
 (merge: files from the archive overwrite, everything else is left alone); for a
 clean restore run `rm -rf ~/.claude && claude-restore <file>`.
+
+## Backing up Docker state
+
+`/var/lib/docker` is its own ext4 volume rather than part of the image, so it
+survives a stop/start on its own — but it belongs to the sandbox, and `sbx rm`
+deletes it. That takes with it built images, the build cache and named volumes
+(test databases, credentials typed in by hand).
+
+```bash
+docker-backup            # -> <workspace>/docker-data.tar.zst
+docker-restore           # wipes /var/lib/docker, then restores
+```
+
+Both stop the daemon first and start it again afterwards (a data root copied
+from under a live dockerd has inconsistent metadata), so running containers do
+not survive. The archive keeps hardlinks and, importantly, the
+`trusted.overlay.*` xattrs that mark opaque directories — without them files
+deleted in an upper layer reappear. Restoring into a newer Docker is fine;
+downgrading is not.
 
 ## Permission mode
 

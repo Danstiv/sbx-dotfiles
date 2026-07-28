@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Snapshot the Docker data root into a tarball on the workspace mount.
+#
+# /var/lib/docker is a separate ext4 volume, not part of the image — but it
+# belongs to the sandbox, and `sbx rm` deletes it along with everything else.
+# This preserves images, the build cache and named volumes (test databases,
+# credentials entered by hand) across a recreate.
+#
+# The daemon is stopped for the duration: a data root copied out from under a
+# live dockerd has inconsistent metadata. Running containers do not survive it.
+#
+#   docker-backup            -> <workspace>/docker-data.tar.zst
+#   docker-backup <path>     -> that path
+set -euo pipefail
+
+DATA_ROOT=/var/lib/docker
+
+workspace_root() {
+  local f="$HOME/.sbx-workdir" dir
+  if [ -s "$f" ] && dir=$(cat "$f") && [ -d "$dir" ]; then
+    printf '%s' "$dir"
+  else
+    printf '%s' "$PWD"
+  fi
+}
+
+DEST="${1:-$(workspace_root)/docker-data.tar.zst}"
+
+source /opt/sbx/docker-daemon.sh
+
+stop_daemon
+trap start_daemon EXIT
+
+# --numeric-owner: uids must not be remapped through /etc/passwd on restore.
+# --xattrs-include='*': the default is user.* only, which silently drops the
+# trusted.overlay.* attributes marking opaque directories — lose those and
+# files deleted in an upper layer come back to life.
+# Hardlinks are kept by tar itself; layers lean on them heavily for dedup.
+sudo tar -C "$DATA_ROOT" -cf - . \
+  --numeric-owner --xattrs --xattrs-include='*' --acls --sparse -p \
+  | zstd -T0 "-${ZSTD_LEVEL:-3}" -q -f -o "$DEST"
+
+echo "docker-backup: $DATA_ROOT -> $DEST ($(du -h "$DEST" | cut -f1))"

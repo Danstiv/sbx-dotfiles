@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Restore a Docker data root snapshot made by docker-backup.
+#
+# Unlike claude-restore this is NOT a merge: /var/lib/docker is emptied first,
+# because a data root half from one snapshot and half from another is not a
+# valid one. Everything currently in Docker — images, cache, volumes — is gone.
+#
+# Restoring into a newer Docker generally works (the daemon migrates its
+# metadata); going back to an older one does not. Keep that in mind if the
+# template is rebuilt onto a new base image.
+#
+#   docker-restore            <- <workspace>/docker-data.tar.zst
+#   docker-restore <path>
+#   docker-restore -f <path>  # skip the confirmation
+set -euo pipefail
+
+DATA_ROOT=/var/lib/docker
+FORCE=0
+
+if [ "${1:-}" = "-f" ] || [ "${1:-}" = "--force" ]; then
+  FORCE=1
+  shift
+fi
+
+workspace_root() {
+  local f="$HOME/.sbx-workdir" dir
+  if [ -s "$f" ] && dir=$(cat "$f") && [ -d "$dir" ]; then
+    printf '%s' "$dir"
+  else
+    printf '%s' "$PWD"
+  fi
+}
+
+SRC="${1:-$(workspace_root)/docker-data.tar.zst}"
+
+if [ ! -f "$SRC" ]; then
+  echo "docker-restore: archive $SRC not found" >&2
+  exit 1
+fi
+
+if [ "$FORCE" != 1 ]; then
+  echo "This wipes $DATA_ROOT (currently $(sudo du -sh "$DATA_ROOT" | cut -f1)) and"
+  echo "replaces it with $SRC."
+  reply=""
+  read -r -p "Continue? [y/N] " reply || true    # no tty -> empty -> abort
+  case "$reply" in [yY]*) ;; *) echo "aborted"; exit 1 ;; esac
+fi
+
+source /opt/sbx/docker-daemon.sh
+
+stop_daemon
+trap start_daemon EXIT
+
+# -mindepth 1: empty the volume, keep the mount point itself.
+sudo find "$DATA_ROOT" -mindepth 1 -delete
+
+zstd -dc "$SRC" \
+  | sudo tar -C "$DATA_ROOT" -xf - \
+      --numeric-owner --xattrs --xattrs-include='*' --acls -p
+
+echo "docker-restore: $SRC -> $DATA_ROOT"
