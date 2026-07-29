@@ -63,11 +63,8 @@ Nothing for that is shipped here. If you want sounds, grab a release of
 Linux) and set it up yourself: put your `.wav` files in its `sounds/` folder,
 start it, and arrange for it to run at logon however you prefer.
 
-Then allow the port once, so the sandbox may reach it:
-
-```powershell
-sbx policy allow network localhost:57919
-```
+The port is opened by the kit (`caps.network.allow`), so no `sbx policy allow`
+is needed — but a kit only reaches an existing sandbox via `sbx kit add`.
 
 The hooks are just `play-sound stop` and `play-sound prompt` — that command
 wraps the request and assumes http_player's defaults (port `57919`, sounds named

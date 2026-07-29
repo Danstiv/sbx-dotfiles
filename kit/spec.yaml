@@ -7,6 +7,12 @@ description: >-
   sandbox. Pairs with the claude-code-custom template, which carries the startup
   scripts under /opt/sbx.
 
+caps:
+  network:
+    allow:
+      # http_player on the host, for the sound hooks — see README.
+      - localhost:57919
+
 commands:
   initFiles:
     - path: /home/agent/.sbx-workdir
