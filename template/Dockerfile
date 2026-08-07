@@ -15,6 +15,7 @@ FROM docker/sandbox-templates:claude-code-docker
 # binaries.
 ENV PYTHON_BASIC_REPL=1 \
     DISABLE_AUTOUPDATER=1 \
+    LANG=C.UTF-8 \
     PATH=/opt/sbx/bin:$PATH
 
 USER root
