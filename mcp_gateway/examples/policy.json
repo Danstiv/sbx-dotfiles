@@ -1,0 +1,19 @@
+{
+  "hosts": [
+    "mcp.linear.app",
+    "api.githubcopilot.com"
+  ],
+
+  "sandboxes": [
+    "project1",
+    "project2"
+  ],
+
+  "always_ask": [
+    "bash",
+    "execute_command",
+    "run_shell"
+  ],
+
+  "timeout": 300
+}

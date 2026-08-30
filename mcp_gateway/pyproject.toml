@@ -1,0 +1,27 @@
+[project]
+name = "mcp-gateway"
+version = "0.1.0"
+description = "Approval gate for MCP tool calls leaving a sandbox"
+requires-python = ">=3.14"
+dependencies = [
+    "mitmproxy~=12.2.3",
+    "websockets~=17.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+# Nothing here is importable as a library — `daemon`, `cli` and `protocol` are
+# top-level names that have no business in site-packages. uv manages the
+# dependencies and leaves the tree alone; everything runs as `uv run -m daemon`.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
