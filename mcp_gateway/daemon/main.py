@@ -8,6 +8,7 @@ from pathlib import Path
 from mitmproxy import options
 from mitmproxy.tools.dump import DumpMaster
 
+from . import detach
 from .addon import GateAddon
 from .config import (
     Config,
@@ -32,6 +33,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to config.json (state files live beside it)",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
+    # One process per config, so the three background verbs are modes of the
+    # same command rather than subcommands: plain `-m daemon` stays the
+    # foreground run it has always been.
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "-d", "--detach", action="store_true", help="start in the background and return"
+    )
+    mode.add_argument("--stop", action="store_true", help="stop the background daemon")
+    mode.add_argument("--status", action="store_true", help="say whether it is running")
     return parser
 
 
@@ -123,10 +133,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"mcp-gateway: {exc}", file=sys.stderr)
         return 2
 
+    # Before read_secret: asking whether the daemon runs should not create the
+    # credential it would have run with.
+    if args.stop:
+        return detach.stop(config)
+    if args.status:
+        return detach.status(config)
+    if args.detach:
+        child_argv = ["--config", str(args.config.resolve())]
+        if args.verbose:
+            child_argv.append("--verbose")
+        return detach.start(config, child_argv)
+
     secret = read_secret(config.secret_path)
     logger.info(f"control secret in {config.secret_path}")
-    try:
-        asyncio.run(run(config, secret))
-    except KeyboardInterrupt:
-        pass
+    # Written here rather than by the launcher, so the file names whoever is
+    # actually bound to the port — a daemon started in the foreground can be
+    # stopped with --stop too, and a start that lost a race for the port never
+    # leaves its pid behind as the one to kill.
+    with detach.claim_pidfile(config):
+        try:
+            asyncio.run(run(config, secret))
+        except KeyboardInterrupt:
+            pass
     return 0

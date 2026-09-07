@@ -177,6 +177,14 @@ class Config:
     def tokens_path(self) -> Path:
         return self.root / "tokens.json"
 
+    @property
+    def pid_path(self) -> Path:
+        return self.root / "daemon.pid"
+
+    @property
+    def log_path(self) -> Path:
+        return self.root / "daemon.log"
+
     @classmethod
     def load(cls, path: Path) -> Config:
         raw = _read_json_object(path, "copy examples/config.json")

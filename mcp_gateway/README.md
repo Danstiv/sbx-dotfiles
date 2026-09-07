@@ -146,6 +146,15 @@ uv run -m cli           # the console, in another window
 Python 3.14, pinned in `.python-version`; uv fetches it if the host does not
 have it, so there is nothing to install beyond uv itself.
 
+The gate has to be up before sandboxd is, which is a window to keep alive, so
+it can also run in the background:
+
+```
+uv run -m daemon -d       # start detached, return once it answers
+uv run -m daemon --status
+uv run -m daemon --stop
+```
+
 The daemon can run without the console attached; calls queue up and are handed
 over when a console appears. A held call looks like this:
 
@@ -173,6 +182,8 @@ All of these live in `data/`, which is gitignored whole:
 | `secret.txt` | the daemon | control-socket token, generated on first run |
 | `tokens.json` | you, optional | a bearer token per host, attached on the way out |
 | `audit.jsonl` | the daemon | every call held and every decision taken |
+| `daemon.pid` | the daemon | whom `--stop` stops, written when started with `-d` |
+| `daemon.log` | the daemon | its console output when started with `-d` |
 
 The split is by whether a setting can change under a running process.
 `policy.json` is consulted on every call, so it is re-read whenever it changes
