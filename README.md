@@ -23,6 +23,7 @@ sbx-dotfiles/
             docker-backup         # snapshot /var/lib/docker onto the workspace
             docker-restore        # restore such a snapshot
             play-sound            # ask the host's http_player to play a sound (hooks)
+            git-context           # UserPromptSubmit hook: current git state into the prompt
         scripts/                  # -> /opt/sbx, plain data
             shim-lib.sh           # shared helper sourced by the wrappers
             docker-daemon.sh      # stop/start dockerd, sourced by the docker-* commands
@@ -31,6 +32,7 @@ sbx-dotfiles/
             claude-settings.json  # your settings.json, deep-merged over the base (gitignored)
             statusline-command.sh # status line
             bashrc-extra.sh       # interactive-only shell bits -> ~/.bashrc
+            gitignore-global      # -> ~/.config/git/ignore (the backup archives)
             CLAUDE.md.example     # sample global CLAUDE.md
             CLAUDE.md             # your personal CLAUDE.md (gitignored)
     kit/spec.yaml                 # startup: invokes /opt/sbx/init-config.py
@@ -73,7 +75,9 @@ wraps the request and assumes http_player's defaults (port `57919`, sounds named
 ## Personal config
 
 The global `CLAUDE.md` and `claude-settings.json` are per-person, so they are
-gitignored. Copy the samples and edit them to taste:
+gitignored. `CLAUDE.md.example` carries the parts that describe the sandbox
+itself (network policy, the bind-mount's quirks, git state, `uv`); personal
+rules go in your copy. Copy the samples and edit them to taste:
 
 ```bash
 cp template/scripts/CLAUDE.md.example            template/scripts/CLAUDE.md
@@ -115,12 +119,25 @@ docker-backup            # -> <workspace>/docker-data.tar.zst
 docker-restore           # wipes /var/lib/docker, then restores
 ```
 
-Both stop the daemon first and start it again afterwards (a data root copied
+Both archives land in the workspace, i.e. inside the mounted repo, so
+`claude-home.tar.gz` and `docker-data.tar.zst` are ignored globally via
+`~/.config/git/ignore`.
+
+Both commands stop the daemon first and start it again afterwards (a data root copied
 from under a live dockerd has inconsistent metadata), so running containers do
 not survive. The archive keeps hardlinks and, importantly, the
 `trusted.overlay.*` xattrs that mark opaque directories — without them files
 deleted in an upper layer reappear. Restoring into a newer Docker is fine;
 downgrading is not.
+
+## Git state in every prompt
+
+`git-context` is a `UserPromptSubmit` hook (`bin/git-context`, wired up in
+`claude-settings.json`) that keeps Claude's picture of the repo current: every
+prompt gets a `<git-state>` block with `git status --short --branch` and the
+last five commits.
+
+Outside a repo it prints nothing, and a status over 40 lines is truncated.
 
 ## Permission mode
 
@@ -181,6 +198,15 @@ layer; `uv sync` rebuilds them.
   config edits made inside the sandbox survive a restart.
 - On startup sbx generates a `CLAUDE.md` next to the workspace; `init-config.py`
   removes it by signature (a hand-written CLAUDE.md is left untouched).
+- `${SANDBOX_NAME}` in the personal `CLAUDE.md` is replaced with the sandbox's
+  name (`$SANDBOX_NAME`, else the hostname) while the file is laid out. It is
+  the only placeholder, and it exists so the agent can offer
+  `sbx policy allow network --sandbox <name> <host>` ready to paste.
+- `CLAUDE_CODE_RESUME_THRESHOLD_MINUTES` (settings `env`) is set absurdly high
+  to silence the dialog `/resume` shows on an old, large session — the one
+  offering to `/compact` before continuing. It fires when the session is older
+  than 70 minutes *and* over ~100k tokens
+  (`CLAUDE_CODE_RESUME_TOKEN_THRESHOLD`), so raising either threshold is enough.
 - Env vars are set via `ENV` in the Dockerfile so Claude's non-interactive Bash
   tool sees them too.
 - Kit `startup` commands run on **every** sandbox start, not only at creation

@@ -1,0 +1,6 @@
+# Global gitignore inside the sandbox -> ~/.config/git/ignore.
+#
+# claude-backup and docker-backup write into the workspace (the only thing that
+# survives a recreate), i.e. into the repo mounted there.
+claude-home.tar.gz
+docker-data.tar.zst

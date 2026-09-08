@@ -1,6 +1,84 @@
 # Global instructions (environment: Docker Sandbox / sbx)
-#
-# This is a sample. Copy it to CLAUDE.md next to this file (that one is
-# gitignored — everyone keeps their own) and edit it. init-config.py lays
-# CLAUDE.md out to ~/.claude on startup; if the file is absent it just skips
-# that step.
+
+## The environment is an isolated microVM (sbx)
+
+This session runs inside a Docker Sandbox: a microVM with its own Linux kernel,
+separated from the host by a hypervisor.
+
+The working directory is bind-mounted from the host and visible there.
+Everything else in the VM is ephemeral: it lives as long as the sandbox does and
+is wiped when the sandbox is recreated.
+
+## A blocked domain is a full stop, not a task
+
+Outbound traffic goes through an allowlist. A domain that is not on it looks
+like "DNS does not resolve", "connection refused", or a dropped connection at
+the proxy — and it is NOT a reason to start fixing code.
+
+**The moment it is clear that a domain is blocked, stop and tell the user.**
+Do not invent a way around it: no stubbing out network calls, no swapping the
+client for a mock, no disabling checks, no editing someone else's code
+"temporarily". Even if you honestly revert the edit afterwards, a run made
+against a stub verified nothing, and the user finds that out far later than they
+should have.
+
+Say it plainly: which host is needed, which step it blocked, and that one
+command on the host opens it. Give that command with the host filled in, ready
+to paste:
+
+```powershell
+sbx policy allow network --sandbox ${SANDBOX_NAME} <host>[:<port>]
+```
+
+A hostname opens exactly that host. To open a domain together with all its
+subdomains, write `**.example.com`.
+
+Without `--sandbox` the rule is global and opens the domain for every sandbox —
+only offer that if the user asks for it.
+
+Then it is the user's call: open the domain, point you at another environment,
+or accept a run without that piece. The one thing to do on your own is finish
+everything that does not depend on that host, and state explicitly what was left
+unverified.
+
+The host's GitHub token is NOT forwarded into the sandbox automatically. Until
+gh auth is set up through a kit (serviceAuth/proxy), `gh` will answer "not
+logged in" — that is expected, and NOT a reason to run `gh auth login`. Read-only
+commands that need no token work.
+
+## FS
+
+- **`sed -i` in the working directory drops the file mode to `0600`** — and
+  tests then fail for no real reason: a container runs under a different uid and
+  simply cannot read the file (`PermissionError: [Errno 13]` on import).
+  Reproduces reliably, and only on the bind-mount: the same `sed -i` in `/tmp`
+  leaves `0644`. So after any bulk edit with `sed -i` (renaming imports and the
+  like) run `find src tests -name "*.py" ! -perm -o+r -exec chmod 644 {} +`
+  before the tests. Scripts you mount into a container with `-v` also have to be
+  `chmod 644`, or the container cannot read them.
+- **`mv` of a directory occasionally fails with `Permission denied`** if it
+  contains something a container wrote recently (typically `__pycache__` after a
+  test run). The modes look fine, and from the host the file shows up under your
+  own uid. Seen twice, 0 out of 5 on a retry — a race on the bind-mount, not a
+  rule. Delete `__pycache__`
+  (`find <path> -name __pycache__ -type d -exec rm -rf {} +`) and repeat the
+  `mv`; no need to hunt for a cause in the code.
+- **Do not blame the bind-mount for edits that suddenly rolled back.**
+  Work happening on the host side is
+  the likelier explanation. Check `git log` / `git status` before explaining it
+  with the filesystem.
+
+## Git state
+
+Every user message carries a `<git-state>` block — `git status --short --branch`
+and the last five commits as of that message. That is the current state of the
+repository; any earlier git output in the conversation is stale. No need to
+re-run status for the general picture, only for details (a diff, the full log, a
+specific commit).
+
+## Python projects
+
+Run everything through `uv run` — do not activate a virtualenv. A venv cannot
+live on the workspace mount, so `uv` is wrapped to keep each project's
+environment under `~/.venvs`; `uv run` resolves it on the fly. There is no
+`./.venv` in the repo. For example: `uv run ruff check src`.

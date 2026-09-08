@@ -1,6 +1,9 @@
 {
   "model": "opus",
   "respondToBashCommands": false,
+  "useAutoModeDuringPlan": false,
+  "remoteControlAtStartup": false,
+  "feedbackSurveyRate": 0,
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude/statusline-command.sh"
@@ -26,7 +29,20 @@
       "Read(**/secrets/**)"
     ]
   },
+  "env": {
+    "CLAUDE_CODE_RESUME_THRESHOLD_MINUTES": "99999999"
+  },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git-context"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

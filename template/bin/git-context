@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: whatever this prints on stdout is appended to the
+# prompt, so every turn carries the repo's current state.
+#
+# Must never fail: a UserPromptSubmit hook that errors out blocks the prompt.
+# No repo, no jq, an enormous status — all of it just prints less.
+set -uo pipefail
+
+MAX_STATUS_LINES=40
+LOG_COUNT=5
+
+# The hook payload arrives on stdin; .cwd is the session's directory. Falling
+# back to $PWD keeps the command usable by hand.
+if [ ! -t 0 ]; then
+  cwd=$(jq -r '.cwd // empty' 2>/dev/null)
+  [ -n "${cwd:-}" ] && cd "$cwd" 2>/dev/null
+fi
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+
+status=$(git status --short --branch 2>/dev/null)
+status_lines=$(printf '%s\n' "$status" | wc -l)
+
+echo "<git-state>"
+echo "Fresh as of this message; supersedes any earlier git state in the conversation."
+echo
+echo "\$ git status --short --branch"
+printf '%s\n' "$status" | head -n "$MAX_STATUS_LINES"
+if [ "$status_lines" -gt "$MAX_STATUS_LINES" ]; then
+  echo "... $((status_lines - MAX_STATUS_LINES)) more lines, run git status yourself"
+fi
+echo
+echo "\$ git log -n $LOG_COUNT --oneline"
+git log -n "$LOG_COUNT" --oneline --no-decorate 2>/dev/null
+echo "</git-state>"

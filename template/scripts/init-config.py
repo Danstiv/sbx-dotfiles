@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import json
+import os
 import shutil
+import socket
 import sys
 from pathlib import Path
 
@@ -11,6 +13,8 @@ ASSETS = Path("/opt/sbx")
 DESIRED_FILE = ASSETS / "claude-settings.json"
 WORKDIR_FILE = Path.home() / ".sbx-workdir"
 GUIDANCE_MARK = "This file provides context and guidance"
+# git reads this path with no core.excludesFile setting.
+GLOBAL_GITIGNORE = Path.home() / ".config" / "git" / "ignore"
 
 
 def deep_merge(base, overlay):
@@ -26,6 +30,18 @@ def install_asset(name, dst, mode=None):
     shutil.copyfile(ASSETS / name, dst)
     if mode is not None:
         dst.chmod(mode)
+
+
+def get_sandbox_name():
+    return os.environ.get("SANDBOX_NAME") or socket.gethostname()
+
+
+def install_claude_md(dst):
+    # ${SANDBOX_NAME} is substituted here rather than left for the agent to
+    # resolve: the name is fixed for the life of the sandbox, and `sbx policy
+    # allow network --sandbox <name>` is only useful if the name in it is right.
+    text = (ASSETS / "CLAUDE.md").read_text(encoding="utf-8")
+    dst.write_text(text.replace("${SANDBOX_NAME}", get_sandbox_name()), encoding="utf-8")
 
 
 def remove_generated_guidance():
@@ -53,9 +69,13 @@ def main():
         return 0
 
     install_asset("statusline-command.sh", CLAUDE_DIR / "statusline-command.sh", 0o755)
+
+    GLOBAL_GITIGNORE.parent.mkdir(parents=True, exist_ok=True)
+    install_asset("gitignore-global", GLOBAL_GITIGNORE)
+
     # CLAUDE.md is personal (gitignored) — install it only if one was baked in.
     if (ASSETS / "CLAUDE.md").is_file():
-        install_asset("CLAUDE.md", CLAUDE_DIR / "CLAUDE.md")
+        install_claude_md(CLAUDE_DIR / "CLAUDE.md")
 
     # claude-settings.json is personal (gitignored) — merge it only if one was
     # baked in.
@@ -76,7 +96,7 @@ def main():
 
     MARKER.write_text("", encoding="utf-8")
 
-    print("[sbx-init] applied settings.json, statusline, CLAUDE.md")
+    print("[sbx-init] applied settings.json, statusline, CLAUDE.md, global gitignore")
     return 0
 
 
