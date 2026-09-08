@@ -8,6 +8,7 @@ from pathlib import Path
 
 CLAUDE_DIR = Path.home() / ".claude"
 SETTINGS = CLAUDE_DIR / "settings.json"
+APP_STATE = Path.home() / ".claude.json"
 MARKER = CLAUDE_DIR / ".sbx-config-initialized"
 ASSETS = Path("/opt/sbx")
 DESIRED_FILE = ASSETS / "claude-settings.json"
@@ -44,6 +45,25 @@ def install_claude_md(dst):
     dst.write_text(text.replace("${SANDBOX_NAME}", get_sandbox_name()), encoding="utf-8")
 
 
+def dismiss_auto_mode_nudge():
+    # ~/.claude.json is answered-dialog state, wiped with the sandbox, so the
+    # "Make auto mode your default permission mode?" dialog would come back on
+    # every fresh VM. Pre-answering it leaves auto mode itself usable.
+    state = {}
+    if APP_STATE.exists():
+        try:
+            state = json.loads(APP_STATE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return
+    if state.get("hasSeenAutoDefaultNudge") is True:
+        return
+    state["hasSeenAutoDefaultNudge"] = True
+    try:
+        APP_STATE.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def remove_generated_guidance():
     if not WORKDIR_FILE.exists():
         return
@@ -63,6 +83,7 @@ def main():
     CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
 
     remove_generated_guidance()
+    dismiss_auto_mode_nudge()
 
     if MARKER.exists():
         print("[sbx-init] marker present, leaving config untouched")

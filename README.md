@@ -197,6 +197,11 @@ layer; `uv sync` rebuilds them.
   config edits made inside the sandbox survive a restart.
 - On startup sbx generates a `CLAUDE.md` next to the workspace; `init-config.py`
   removes it by signature (a hand-written CLAUDE.md is left untouched).
+- `init-config.py` also sets `hasSeenAutoDefaultNudge` in `~/.claude.json`, which
+  suppresses the "Make auto mode your default permission mode?" dialog while
+  leaving auto mode itself available. It runs ahead of the marker check, because
+  that state is answered-dialog state, not config, and a fresh VM starts without
+  it.
 - `${SANDBOX_NAME}` in the personal `CLAUDE.md` is replaced with the sandbox's
   name (`$SANDBOX_NAME`, else the hostname) while the file is laid out. It is
   the only placeholder, and it exists so the agent can offer
