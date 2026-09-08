@@ -122,4 +122,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as exc:
+        # A non-zero exit from a kit install command aborts sandbox creation, so
+        # a typo in claude-settings.json must cost the config, not the sandbox.
+        print(f"[sbx-init] failed: {exc!r}", file=sys.stderr)
+        sys.exit(0)

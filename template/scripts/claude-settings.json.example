@@ -12,8 +12,10 @@
   "cleanupPeriodDays": 36500,
   "permissions": {
     "defaultMode": "acceptEdits",
+    "disableBypassPermissionsMode": "disable",
     "allow": [
-      "Bash"
+      "Bash",
+      "mcp__mcp-gateway"
     ],
     "deny": [
       "Read(**/.env)",

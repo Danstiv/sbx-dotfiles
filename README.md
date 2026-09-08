@@ -34,7 +34,7 @@ sbx-dotfiles/
             gitignore-global      # -> ~/.config/git/ignore (the backup archives)
             CLAUDE.md.example     # sample global CLAUDE.md
             CLAUDE.md             # your personal CLAUDE.md (gitignored)
-    kit/spec.yaml                 # startup: invokes /opt/sbx/init-config.py
+    kit/spec.yaml                 # install + startup: invokes /opt/sbx/init-config.py
     build-template.sh             # docker build -> save -> sbx template load
 ```
 
@@ -140,22 +140,36 @@ Outside a repo it prints nothing, and a status over 40 lines is truncated.
 
 ## Permission mode
 
-sbx launches the agent as `claude --dangerously-skip-permissions` — the flag is
-baked into `sbx.exe`, it is not a sandbox setting, and it overrides
-`permissions.defaultMode` in `settings.json`, so whatever you configure there is
-ignored.
+Two things push a sandbox into bypass, and both have to be answered.
 
-`bin/claude` is a wrapper that sits earlier in `PATH` than the real binary and
-removes the flag, which hands the decision back to `settings.json`. Verified:
-with `SBX_SHIM_DEBUG=1` the wrapper logs `argv: --dangerously-skip-permissions
---version`, i.e. sbx resolves `claude` through `PATH` and the interception
-holds. Set `SBX_ALLOW_BYPASS=1` to keep sbx's original behaviour.
+**The launch flag.** sbx generates `/usr/local/lib/sandbox/start-agent`, which
+runs `exec 'claude' '--dangerously-skip-permissions' "$@"`. That is a bare
+`claude`, so it resolves through `PATH`, and `bin/claude` — sitting earlier in
+`PATH` than the real binary — strips the flag: `/proc/<pid>/cmdline` of the
+agent sbx started reads `/home/agent/.local/bin/claude` with no arguments. Set
+`SBX_ALLOW_BYPASS=1` to keep sbx's original behaviour.
 
-There is no supported setting for this: Claude Code has no managed-settings key
-that disables bypass mode. The image's `CMD` is no help either — sbx replaces
-the container command with a keep-alive (`tini -- sh -c 'sleep infinity'`) and
-starts the agent separately, so `CMD` never runs. Verified by building with
-`CMD ["claude", "--marker-from-cmd"]`: the marker never reached the wrapper.
+**The seeded settings.** sbx's own `claude` kit writes `~/.claude/settings.json`
+during create (the command is in `sbx.exe`, *"Seed Claude settings.json from
+SBX_CRED_ANTHROPIC_MODE"*), and it asks for bypass outright:
+`"permissions": { "defaultMode": "bypassPermissions" }`, plus the two consent
+keys so nothing prompts. Dropping the flag alone therefore changes nothing.
+
+`setup.install` in `kit/spec.yaml` answers that one: install commands finish
+during create, before the CLI launches the first session, and a mixin's run
+after the base agent's — so `init-config.py` merges `claude-settings.json` over
+the seed while nothing has read it yet. `setup.startup` cannot, being fired from
+a detached dispatcher that lands ~1.5 s after the agent has already started.
+
+Two things help when this needs checking. `SBX_SHIM_DEBUG=1` makes the wrapper
+log argv and the state of `~/.claude/settings.json` to `/tmp/claude-shim.log` at
+the last moment before Claude reads it; and `/var/log/sbx-kit-startup.log`
+saying `marker present, leaving config untouched` means the install pass had
+already done the work.
+
+Note that the permission *mode* is resolved once at session start, while `deny`
+rules and hooks are re-read from `settings.json` as it changes — so a session
+can be in the wrong mode and still enforce `Read(**/.env)`.
 
 ## Python venvs
 

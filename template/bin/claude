@@ -11,16 +11,29 @@
 # sandbox itself (a microVM plus sbx network policy), not the in-agent prompt.
 #
 #   SBX_ALLOW_BYPASS=1   keep the flag, i.e. restore sbx's own behaviour
-#   SBX_SHIM_DEBUG=1     log the argv this wrapper received to /tmp/claude-shim.log
+#   SBX_SHIM_DEBUG=1     log argv and the state of ~/.claude to /tmp/claude-shim.log
 set -u
 
 source /opt/sbx/shim-lib.sh
 real=$(resolve_real "$0") || exit $?
 
+# The wrapper is the last thing to run before Claude reads its config, so it is
+# the only place that can record what was on disk at that moment — by the time
+# anything else can look, init-config.py has merged over whatever was there.
 if [ "${SBX_SHIM_DEBUG:-}" = "1" ]; then
-  printf '%s argv:' "$(date -Is)" >> /tmp/claude-shim.log
-  printf ' %q' "$@" >> /tmp/claude-shim.log
-  printf '\n' >> /tmp/claude-shim.log
+  log=/tmp/claude-shim.log
+  {
+    printf '%s pid=%s argv:' "$(date -Is)" "$$"
+    printf ' %q' "$@"
+    printf '\n'
+    settings="$HOME/.claude/settings.json"
+    if [ -e "$settings" ]; then
+      stat -c '  settings: %s bytes, %U:%G %a, mtime %y' "$settings"
+      sed 's/^/    | /' "$settings"
+    else
+      printf '  settings: absent\n'
+    fi
+  } >> "$log" 2>&1 || true
 fi
 
 if [ "${SBX_ALLOW_BYPASS:-}" = "1" ]; then

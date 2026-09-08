@@ -18,5 +18,8 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
-tar -czf "$DEST" -C "$HOME" .claude
+# The init marker stays out: restoring it would tell init-config.py that this
+# home is already configured, and the settings baked into a newer image would
+# never be merged over the restored ones.
+tar -czf "$DEST" --exclude=.claude/.sbx-config-initialized -C "$HOME" .claude
 echo "backup: $SRC -> $DEST ($(du -h "$DEST" | cut -f1))"

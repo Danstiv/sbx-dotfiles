@@ -1,4 +1,4 @@
-schemaVersion: "1"
+schemaVersion: "2"
 kind: mixin
 name: claude-config
 displayName: Claude config
@@ -7,26 +7,40 @@ description: >-
   sandbox. Pairs with the claude-code-custom template, which carries the startup
   scripts under /opt/sbx.
 
-caps:
+requires:
+  agent: claude
+
+permissions:
   network:
     allow:
       # http_player on the host, for the sound hooks — see README.
       - localhost:57919
 
-commands:
-  initFiles:
-    - path: /home/agent/.sbx-workdir
-      content: "${WORKDIR}"
+setup:
+  # Install finishes during create, before the first session reads settings —
+  # the only window in which this can beat sbx's own bypass seed. `command` is a
+  # shell string and defaults to root, hence the explicit uid.
+  install:
+    - command: python3 /opt/sbx/init-config.py
+      user: "1000"
+      description: Lay out ~/.claude before the first session reads it
+  # Startup covers restarts and the steps ahead of the idempotence marker.
+  # `command` is argv here, not a shell string.
   startup:
     - command: ["python3", "/opt/sbx/init-config.py"]
       user: "1000"
+      description: Re-apply config on restart
+  files:
+    - path: /home/agent/.sbx-workdir
+      content: "${WORKDIR}"
 
-agentContext: |
-  uv (the Python package/project manager) and nano are available. Personal
-  Claude Code settings and CLAUDE.md are already laid out under ~/.claude at
-  startup.
+agentInstructions:
+  content: |
+    uv (the Python package/project manager) and nano are available. Personal
+    Claude Code settings and CLAUDE.md are already laid out under ~/.claude at
+    startup.
 
-  A venv cannot live on the workspace mount (it refuses the symlinks a venv
-  needs). `uv` is wrapped so that each project gets one under ~/.venvs instead —
-  nothing to set up, but note there is no ./.venv in the repo: activate via
-  `$(uv python find)` or just use `uv run`.
+    A venv cannot live on the workspace mount (it refuses the symlinks a venv
+    needs). `uv` is wrapped so that each project gets one under ~/.venvs instead —
+    nothing to set up, but note there is no ./.venv in the repo: activate via
+    `$(uv python find)` or just use `uv run`.
