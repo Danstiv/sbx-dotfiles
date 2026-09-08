@@ -19,7 +19,6 @@ sbx-dotfiles/
             uv                    # wrapper that puts each repo's venv on native fs
             claude-backup         # snapshot ~/.claude to a tarball
             claude-restore        # restore such a snapshot
-            claude-update         # update Claude, bypassing the proxy; also runs at start
             docker-backup         # snapshot /var/lib/docker onto the workspace
             docker-restore        # restore such a snapshot
             play-sound            # ask the host's http_player to play a sound (hooks)
@@ -210,11 +209,5 @@ layer; `uv sync` rebuilds them.
 - Env vars are set via `ENV` in the Dockerfile so Claude's non-interactive Bash
   tool sees them too.
 - Kit `startup` commands run on **every** sandbox start, not only at creation
-  (verified) — which is what makes the update check work. The kit itself,
-  however, is captured at creation: editing `kit/spec.yaml` does not reach an
-  existing sandbox until `sbx kit add`.
-- Claude's background auto-updater is off (`DISABLE_AUTOUPDATER=1`) — it can't
-  reach `downloads.claude.ai` through the sandbox's MITM proxy (socket hang up).
-  Instead `claude-update` runs at each start (kit startup) with the proxy env
-  stripped, so the updater uses transparent egress; run `claude-update` by hand
-  anytime. Explicit `claude update` still works with the auto-updater disabled.
+  (verified). The kit itself, however, is captured at creation: editing
+  `kit/spec.yaml` does not reach an existing sandbox until `sbx kit add`.
