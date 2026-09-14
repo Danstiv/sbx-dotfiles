@@ -19,8 +19,8 @@ RUN apt-get update \
 USER agent
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Config comes last on purpose: editing a script must not invalidate the layers
-# above.
+# Config goes after the installs on purpose: editing a script must not
+# invalidate the layers above.
 #
 # Commands go on PATH (see ENV above); assets stay plain data. --chmod covers
 # both, so no chmod step has to be kept in sync by hand — and it normalises the
@@ -33,3 +33,11 @@ COPY --chmod=0644 scripts/ /opt/sbx/
 
 USER agent
 RUN cat /opt/sbx/bashrc-extra.sh >> /home/agent/.bashrc
+
+# The base image pins whatever Claude Code was current when it was published;
+# this pulls the current release at build time. The ARG exists only to bust
+# the cache: build-template.sh passes a fresh value every run, so the layer is
+# never served from cache — without it the update would run once and stick.
+# It is the last step because everything after a busted layer is rebuilt too.
+ARG CLAUDE_UPDATE_STAMP=0
+RUN claude update

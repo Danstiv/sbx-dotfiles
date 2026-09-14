@@ -7,7 +7,9 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 trap 'rm -f "$TAR"' EXIT
 
 echo ">> docker build $IMAGE"
-docker build -t "$IMAGE" "$DIR/template"
+# The stamp defeats docker's cache for the `claude update` layer, so every build
+# ships the current release (see the Dockerfile).
+docker build --build-arg "CLAUDE_UPDATE_STAMP=$(date +%s)" -t "$IMAGE" "$DIR/template"
 
 echo ">> docker image save -> $TAR"
 docker image save "$IMAGE" -o "$TAR"

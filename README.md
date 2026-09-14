@@ -46,6 +46,10 @@ sbx run ./kit --name <sandbox>   # first run: creates the sandbox from the kit
 sbx run --name <sandbox>         # later: re-attach, no kit needed
 ```
 
+Every build runs `claude update`, so the image carries the Claude Code release
+current at build time rather than the one the base image was published with.
+Rebuild to refresh it.
+
 `kit/spec.yaml` is a *sandbox* kit: it defines the agent itself, pointing
 `sandbox.image` at the template the build script loads, so it takes the place
 of the agent name (`sbx run ./kit`, not `sbx run claude --kit ./kit` — a
