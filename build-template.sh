@@ -16,6 +16,6 @@ echo ">> sbx template load"
 sbx template load "$TAR"
 
 echo
-echo "Done. Template loaded: $IMAGE"
-echo "Run a sandbox with this template and kit:"
-echo "  sbx run --template $IMAGE claude --kit \"$DIR/kit\""
+echo "Done. Template loaded: $IMAGE (referenced by kit/spec.yaml as sandbox.image)"
+echo "Run a sandbox from the kit:"
+echo "  sbx run \"$DIR/kit\""

@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,9 +14,11 @@ MARKER = CLAUDE_DIR / ".sbx-config-initialized"
 ASSETS = Path("/opt/sbx")
 DESIRED_FILE = ASSETS / "claude-settings.json"
 WORKDIR_FILE = Path.home() / ".sbx-workdir"
-GUIDANCE_MARK = "This file provides context and guidance"
-# git reads this path with no core.excludesFile setting.
-GLOBAL_GITIGNORE = Path.home() / ".config" / "git" / "ignore"
+# A sentence only sbx's generated guidance contains; a hand-written CLAUDE.md
+# next to the workspace must survive.
+GUIDANCE_MARK = "This sandbox has a persistent environment file at `/etc/sandbox-persistent.sh`"
+# Where git looks when core.excludesFile is unset.
+DEFAULT_EXCLUDES = Path.home() / ".config" / "git" / "ignore"
 
 
 def deep_merge(base, overlay):
@@ -45,29 +48,73 @@ def install_claude_md(dst):
     dst.write_text(text.replace("${SANDBOX_NAME}", get_sandbox_name()), encoding="utf-8")
 
 
-def dismiss_auto_mode_nudge():
-    # ~/.claude.json is answered-dialog state, wiped with the sandbox, so the
-    # "Make auto mode your default permission mode?" dialog would come back on
-    # every fresh VM. Pre-answering it leaves auto mode itself usable.
+def get_workdir():
+    # Install commands see WORKSPACE_DIR; the startup dispatcher does not, but
+    # by then setup.files has written ~/.sbx-workdir.
+    workdir = os.environ.get("WORKSPACE_DIR")
+    if not workdir and WORKDIR_FILE.exists():
+        workdir = WORKDIR_FILE.read_text(encoding="utf-8").strip()
+    return Path(workdir) if workdir else None
+
+
+def seed_app_state():
+    # ~/.claude.json is answered-dialog state, wiped with the sandbox. Without
+    # these a fresh VM greets the first session with onboarding, the
+    # "trust this folder?" prompt and the "make auto mode the default?" nudge.
+    # The kit does not extend sbx's claude kit, whose install step used to
+    # seed the first two.
     state = {}
     if APP_STATE.exists():
         try:
             state = json.loads(APP_STATE.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return
-    if state.get("hasSeenAutoDefaultNudge") is True:
+    desired = {"hasCompletedOnboarding": True, "hasSeenAutoDefaultNudge": True}
+    trusted = {"/": {"hasTrustDialogAccepted": True}}
+    workdir = get_workdir()
+    if workdir is not None:
+        trusted[str(workdir)] = {"hasTrustDialogAccepted": True}
+    merged = deep_merge(json.loads(json.dumps(state)), {**desired, "projects": trusted})
+    if merged == state:
         return
-    state["hasSeenAutoDefaultNudge"] = True
     try:
-        APP_STATE.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-    except OSError:
-        pass
+        APP_STATE.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"[sbx-init] could not write {APP_STATE}: {exc}", file=sys.stderr)
+
+
+def install_global_gitignore():
+    # sbx writes the sandbox's ~/.gitconfig itself and points its
+    # core.excludesFile at a ~/.gitignore_global of its own (containing `.sbx`).
+    # Once that key is set git never consults ~/.config/git/ignore, so the
+    # entries go into the file git actually reads — appended, not replaced.
+    result = subprocess.run(
+        ["git", "config", "--path", "--get", "core.excludesFile"],
+        capture_output=True, text=True,
+    )
+    target = Path(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else DEFAULT_EXCLUDES
+    wanted = [
+        line for line in (ASSETS / "gitignore-global").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    existing = target.read_text(encoding="utf-8").splitlines() if target.exists() else []
+    missing = [line for line in wanted if line not in existing]
+    if not missing:
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as f:
+        if existing and existing[-1] != "":
+            f.write("\n")
+        f.write("\n".join(missing) + "\n")
+    print(f"[sbx-init] added {len(missing)} global gitignore entries to {target}")
 
 
 def remove_generated_guidance():
-    if not WORKDIR_FILE.exists():
+    # Only the startup pass can catch this file: sbx writes it after the
+    # install commands have run.
+    workdir = get_workdir()
+    if workdir is None:
         return
-    workdir = Path(WORKDIR_FILE.read_text(encoding="utf-8").strip())
     candidate = workdir.parent / "CLAUDE.md"
     try:
         if candidate.is_file() and GUIDANCE_MARK in candidate.read_text(
@@ -83,16 +130,14 @@ def main():
     CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
 
     remove_generated_guidance()
-    dismiss_auto_mode_nudge()
+    seed_app_state()
+    install_global_gitignore()
 
     if MARKER.exists():
         print("[sbx-init] marker present, leaving config untouched")
         return 0
 
     install_asset("statusline-command.sh", CLAUDE_DIR / "statusline-command.sh", 0o755)
-
-    GLOBAL_GITIGNORE.parent.mkdir(parents=True, exist_ok=True)
-    install_asset("gitignore-global", GLOBAL_GITIGNORE)
 
     # CLAUDE.md is personal (gitignored) — install it only if one was baked in.
     if (ASSETS / "CLAUDE.md").is_file():

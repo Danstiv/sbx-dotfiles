@@ -15,7 +15,6 @@ sbx-dotfiles/
     template/                     # image (docker build)
         Dockerfile                # FROM docker/sandbox-templates:claude-code-docker
         bin/                      # -> /opt/sbx/bin, which is on PATH
-            claude                # wrapper that drops sbx's --dangerously-skip-permissions
             uv                    # wrapper that puts each repo's venv on native fs
             claude-backup         # snapshot ~/.claude to a tarball
             claude-restore        # restore such a snapshot
@@ -24,33 +23,43 @@ sbx-dotfiles/
             play-sound            # ask the host's http_player to play a sound (hooks)
             git-context           # UserPromptSubmit hook: current git state into the prompt
         scripts/                  # -> /opt/sbx, plain data
-            shim-lib.sh           # shared helper sourced by the wrappers
+            shim-lib.sh           # helper sourced by the uv wrapper
             docker-daemon.sh      # stop/start dockerd, sourced by the docker-* commands
             init-config.py        # lays out ~/.claude on startup (idempotent)
             claude-settings.json.example # sample settings.json
             claude-settings.json  # your settings.json, deep-merged over the base (gitignored)
             statusline-command.sh # status line
             bashrc-extra.sh       # interactive-only shell bits -> ~/.bashrc
-            gitignore-global      # -> ~/.config/git/ignore (the backup archives)
+            gitignore-global      # appended to git's global excludes (the backup archives)
             CLAUDE.md.example     # sample global CLAUDE.md
             CLAUDE.md             # your personal CLAUDE.md (gitignored)
-    kit/spec.yaml                 # install + startup: invokes /opt/sbx/init-config.py
+    kit/spec.yaml                 # standalone sandbox kit: image above + init-config.py
     build-template.sh             # docker build -> save -> sbx template load
 ```
 
 ## Build and run
 
 ```bash
-./build-template.sh                                        # build the image and load it into sbx
-sbx run --template claude-code-custom claude --kit ./kit   # first run: creates the sandbox
-sbx run --name <sandbox>                                   # later: re-attach, no flags needed
+./build-template.sh              # build the image and load it into sbx's template store
+sbx run ./kit --name <sandbox>   # first run: creates the sandbox from the kit
+sbx run --name <sandbox>         # later: re-attach, no kit needed
 ```
 
-`--template` and `--kit` apply only when the sandbox is created — on re-attach
-they are ignored, and the kit stays part of the sandbox spec. So an **edited**
-kit does not reach an existing sandbox by re-running: use
-`sbx kit add <sandbox> ./kit`, which recreates the container with the kit
-appended, keeping the workspace and kit-owned volumes.
+`kit/spec.yaml` is a *sandbox* kit: it defines the agent itself, pointing
+`sandbox.image` at the template the build script loads, so it takes the place
+of the agent name (`sbx run ./kit`, not `sbx run claude --kit ./kit` — a
+sandbox kit cannot be combined with `--template`). It is captured when the
+sandbox is created; an edited kit needs a new sandbox, since `sbx kit add` only
+appends mixins.
+
+It deliberately does not `extends` sbx's built-in `claude` kit (see
+[Permission mode](#permission-mode)), so what that kit would have provided is
+declared here verbatim from its spec: the Anthropic network allows and
+credential block, `IS_SANDBOX`, the `~/.claude/*` session volumes with their
+re-own step, and the MCP gateway registration. Those blocks are the one place
+this repo has to track sbx releases by hand — the built-in spec is embedded in
+`sbx.exe` as plain text (`grep -a 'kind: sandbox' sbx.exe`), so diffing it is
+cheap.
 
 ## Notification sounds (optional, set up on the host)
 
@@ -64,8 +73,9 @@ Nothing for that is shipped here. If you want sounds, grab a release of
 Linux) and set it up yourself: put your `.wav` files in its `sounds/` folder,
 start it, and arrange for it to run at logon however you prefer.
 
-The port is opened by the kit (`caps.network.allow`), so no `sbx policy allow`
-is needed — but a kit only reaches an existing sandbox via `sbx kit add`.
+The port is opened by the kit (`permissions.network.allow`), so no
+`sbx policy allow` is needed — for sandboxes created from the kit; an existing
+one needs the rule added by hand.
 
 The hooks are just `play-sound stop` and `play-sound prompt` — that command
 wraps the request and assumes http_player's defaults (port `57919`, sounds named
@@ -119,8 +129,11 @@ docker-restore           # wipes /var/lib/docker, then restores
 ```
 
 Both archives land in the workspace, i.e. inside the mounted repo, so
-`claude-home.tar.gz` and `docker-data.tar.zst` are ignored globally via
-`~/.config/git/ignore`.
+`init-config.py` appends `claude-home.tar.gz` and `docker-data.tar.zst` to
+git's global excludes — the file `core.excludesFile` names, else
+`~/.config/git/ignore`. sbx sets that key itself when it writes the sandbox's
+`~/.gitconfig`, pointing at its own `~/.gitignore_global` (just `.sbx`), and
+with the key set git never reads `~/.config/git/ignore`.
 
 Both commands stop the daemon first and start it again afterwards (a data root copied
 from under a live dockerd has inconsistent metadata), so running containers do
@@ -140,32 +153,23 @@ Outside a repo it prints nothing, and a status over 40 lines is truncated.
 
 ## Permission mode
 
-Two things push a sandbox into bypass, and both have to be answered.
+sbx's built-in `claude` kit launches `claude --dangerously-skip-permissions`
+(its `sandbox.entrypoint`) and, during create, seeds `~/.claude/settings.json`
+with `"defaultMode": "bypassPermissions"` plus the two consent keys so nothing
+prompts. Both are in the kit spec embedded in `sbx.exe`, and both are
+inherited by any kit that `extends` it: inheritance is additive, a child
+`sandbox.entrypoint` is ignored, `sandbox.command: []` reads as unset, and
+there is no field to drop a parent's install command (all verified). The image
+cannot help either — sbx never runs its `ENTRYPOINT`/`CMD` and regenerates the
+launch script over anything baked in.
 
-**The launch flag.** sbx generates `/usr/local/lib/sandbox/start-agent`, which
-runs `exec 'claude' '--dangerously-skip-permissions' "$@"`. That is a bare
-`claude`, so it resolves through `PATH`, and `bin/claude` — sitting earlier in
-`PATH` than the real binary — strips the flag: `/proc/<pid>/cmdline` of the
-agent sbx started reads `/home/agent/.local/bin/claude` with no arguments. Set
-`SBX_ALLOW_BYPASS=1` to keep sbx's original behaviour.
-
-**The seeded settings.** sbx's own `claude` kit writes `~/.claude/settings.json`
-during create (the command is in `sbx.exe`, *"Seed Claude settings.json from
-SBX_CRED_ANTHROPIC_MODE"*), and it asks for bypass outright:
-`"permissions": { "defaultMode": "bypassPermissions" }`, plus the two consent
-keys so nothing prompts. Dropping the flag alone therefore changes nothing.
-
-`setup.install` in `kit/spec.yaml` answers that one: install commands finish
-during create, before the CLI launches the first session, and a mixin's run
-after the base agent's — so `init-config.py` merges `claude-settings.json` over
-the seed while nothing has read it yet. `setup.startup` cannot, being fired from
-a detached dispatcher that lands ~1.5 s after the agent has already started.
-
-Two things help when this needs checking. `SBX_SHIM_DEBUG=1` makes the wrapper
-log argv and the state of `~/.claude/settings.json` to `/tmp/claude-shim.log` at
-the last moment before Claude reads it; and `/var/log/sbx-kit-startup.log`
-saying `marker present, leaving config untouched` means the install pass had
-already done the work.
+So `kit/spec.yaml` is standalone: `entrypoint: [claude]`, no seed. The mode is
+whatever `permissions.defaultMode` in `claude-settings.json` says, laid out by
+`init-config.py` as an install command — install commands finish during
+create, before the CLI launches the first session (`setup.startup` cannot do
+this: it is fired from a detached dispatcher that lands ~1.5 s after the agent
+has started). `/var/log/sbx-kit-startup.log` saying `marker present, leaving
+config untouched` means the install pass did the work.
 
 Note that the permission *mode* is resolved once at session start, while `deny`
 rules and hooks are re-read from `settings.json` as it changes — so a session
@@ -209,8 +213,10 @@ layer; `uv sync` rebuilds them.
 
 - `init-config.py` is idempotent (marker `~/.claude/.sbx-config-initialized`):
   config edits made inside the sandbox survive a restart.
-- On startup sbx generates a `CLAUDE.md` next to the workspace; `init-config.py`
-  removes it by signature (a hand-written CLAUDE.md is left untouched).
+- On startup sbx generates a `CLAUDE.md` next to the workspace (the parent's
+  guidance plus any `agentInstructions` of ours — hence the kit has none);
+  `init-config.py` removes it when it contains sbx's own sentence about
+  `/etc/sandbox-persistent.sh`, so a hand-written CLAUDE.md is left untouched.
 - `init-config.py` also sets `hasSeenAutoDefaultNudge` in `~/.claude.json`, which
   suppresses the "Make auto mode your default permission mode?" dialog while
   leaving auto mode itself available. It runs ahead of the marker check, because

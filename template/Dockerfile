@@ -5,8 +5,7 @@ FROM docker/sandbox-templates:claude-code-docker
 #
 # PATH gains /opt/sbx/bin so the commands in bin/ are callable everywhere —
 # interactive shells, Claude's Bash tool, `sbx exec`, scripts. It also has to
-# come first: the claude and uv wrappers there only work by shadowing the real
-# binaries.
+# come first: the uv wrapper there only works by shadowing the real binary.
 ENV PYTHON_BASIC_REPL=1 \
     LANG=C.UTF-8 \
     PATH=/opt/sbx/bin:$PATH

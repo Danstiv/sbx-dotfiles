@@ -1,4 +1,5 @@
-# Global gitignore inside the sandbox -> ~/.config/git/ignore.
+# Global gitignore entries for the sandbox; init-config.py appends them to
+# whatever core.excludesFile resolves to.
 #
 # claude-backup and docker-backup write into the workspace (the only thing that
 # survives a recreate), i.e. into the repo mounted there.

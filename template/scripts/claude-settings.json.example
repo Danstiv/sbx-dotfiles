@@ -12,7 +12,6 @@
   "cleanupPeriodDays": 36500,
   "permissions": {
     "defaultMode": "acceptEdits",
-    "disableBypassPermissionsMode": "disable",
     "allow": [
       "Bash",
       "mcp__mcp-gateway"

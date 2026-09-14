@@ -1,32 +1,115 @@
 schemaVersion: "2"
-kind: mixin
-name: claude-config
-displayName: Claude config
+kind: sandbox
+name: claude-custom
+displayName: Claude (custom)
 description: >-
-  Applies Claude Code config (settings.json, status line, CLAUDE.md) inside the
-  sandbox. Pairs with the claude-code-custom template, which carries the startup
-  scripts under /opt/sbx.
+  Claude Code on the claude-code-custom image with personal config
+  (settings.json, status line, CLAUDE.md) laid out under ~/.claude.
 
-requires:
-  agent: claude
+# Standalone on purpose — not `extends: claude`. Inheritance is additive, and
+# the built-in kit's entrypoint carries --dangerously-skip-permissions while its
+# install commands seed settings.json with defaultMode: bypassPermissions;
+# neither can be removed by a child. The blocks below are copied from that
+# kit's spec (embedded in sbx.exe) so nothing else is lost.
+sandbox:
+  image: claude-code-custom
+  entrypoint: [claude]
 
 permissions:
   network:
     allow:
+      - "api.anthropic.com:443"
+      - "platform.claude.com:443"
+      - "downloads.claude.ai:443"
+      - "claude.com:443"
+      - "mcp-proxy.anthropic.com:443"
+      # /remote-control and /teleport relay.
+      - "bridge.claudeusercontent.com:443"
       # http_player on the host, for the sound hooks — see README.
       - localhost:57919
 
+environment:
+  variables:
+    IS_SANDBOX: "1"
+
+# Session state that survives recreate-shaped operations (`sbx kit add`,
+# `--model`). Mounted as subdirectories so settings.json and
+# .credentials.json keep coming from the image and the oauth hook.
+volumes:
+  - path: /home/agent/.claude/projects
+    size: 2g
+  - path: /home/agent/.claude/sessions
+    size: 512m
+  - path: /home/agent/.claude/todos
+    size: 512m
+  - path: /home/agent/.claude/shell-snapshots
+    size: 512m
+  - path: /home/agent/.claude/statsig
+    size: 512m
+
+credentials:
+  - service: anthropic
+    apiKey:
+      name: ANTHROPIC_API_KEY
+      inject:
+        - domain: api.anthropic.com
+          header: x-api-key
+          format: "%s"
+        - domain: console.anthropic.com
+          header: x-api-key
+          format: "%s"
+        - domain: claude.ai
+          header: x-api-key
+          format: "%s"
+        - domain: mcp-proxy.anthropic.com
+          header: x-api-key
+          format: "%s"
+    oauth:
+      tokenEndpoint:
+        host: platform.claude.com
+        path: /v1/oauth/token
+      sentinels:
+        accessToken: sk-ant-oat01-proxy-managed
+        refreshToken: sk-ant-ort01-proxy-managed
+      credentialFile:
+        path: "~/.claude/.credentials.json"
+        template: '{"claudeAiOauth":{"accessToken":"{{.AccessToken}}","refreshToken":"{{.RefreshToken}}","expiresAt":{{.ExpiresAt}},"scopes":{{.ScopesJSON}}}{{if .PrimaryApiKey}},"primaryApiKey":"{{.PrimaryApiKey}}"{{end}}}'
+      skipIfEnv:
+        - ANTHROPIC_API_KEY
+
 setup:
-  # Install finishes during create, before the first session reads settings —
-  # the only window in which this can beat sbx's own bypass seed. `command` is a
-  # shell string and defaults to root, hence the explicit uid.
+  # Install commands finish during create, before the first session reads
+  # anything. `command` is a shell string and defaults to root; the config
+  # step needs the agent uid so the files come out owned by it.
   install:
+    # The image ships ~/.claude.json root-owned; init-config.py writes it.
+    - command: chown agent:agent /home/agent/.claude.json 2>/dev/null || true
+      user: "0"
+      description: Make ~/.claude.json writable by the agent user
     - command: python3 /opt/sbx/init-config.py
       user: "1000"
       description: Lay out ~/.claude before the first session reads it
-  # Startup covers restarts and the steps ahead of the idempotence marker.
+    # MCP_GATEWAY_URL / MCP_SENTINEL_TOKEN_NAME are container env injected by
+    # sandboxd at create time. `claude mcp add` exits 1 on an existing name
+    # (it is not an idempotent rewrite), hence `|| true`.
+    - command: |
+        set -e
+        [ -n "$MCP_GATEWAY_URL" ] || exit 0
+        export PATH="$HOME/.local/bin:$HOME/.claude/local:$PATH"
+        claude mcp add mcp-gateway "$MCP_GATEWAY_URL" \
+          --transport http \
+          --scope user \
+          --header "Authorization: Bearer $MCP_SENTINEL_TOKEN_NAME" || true
+      user: "agent"
+      description: Register the sandbox MCP gateway with claude
   # `command` is argv here, not a shell string.
   startup:
+    # The block volumes above mount with a root-owned root (ext4 mkfs), which
+    # shadows the image's ownership; re-own them before any agent activity.
+    - command: ["sh", "-c", "chown -R agent:agent /home/agent/.claude/projects /home/agent/.claude/sessions /home/agent/.claude/todos /home/agent/.claude/shell-snapshots /home/agent/.claude/statsig 2>/dev/null || true"]
+      user: "0"
+      description: Re-own the session-state volumes to the agent user
+    # Covers restarts and the steps ahead of the idempotence marker.
     - command: ["python3", "/opt/sbx/init-config.py"]
       user: "1000"
       description: Re-apply config on restart
@@ -34,13 +117,6 @@ setup:
     - path: /home/agent/.sbx-workdir
       content: "${WORKDIR}"
 
-agentInstructions:
-  content: |
-    uv (the Python package/project manager) and nano are available. Personal
-    Claude Code settings and CLAUDE.md are already laid out under ~/.claude at
-    startup.
-
-    A venv cannot live on the workspace mount (it refuses the symlinks a venv
-    needs). `uv` is wrapped so that each project gets one under ~/.venvs instead —
-    nothing to set up, but note there is no ./.venv in the repo: activate via
-    `$(uv python find)` or just use `uv run`.
+# No agentInstructions: sbx would write them to a CLAUDE.md next to the
+# workspace. The uv/venv note lives in the personal CLAUDE.md instead (see
+# CLAUDE.md.example).
