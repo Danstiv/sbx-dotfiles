@@ -6,9 +6,14 @@
 # sandbox IS the mounted workspace — so the archive persists on the host. Pass an
 # explicit path to put it elsewhere.
 #
+# Image-managed config (settings.json, CLAUDE.md, the status line) is left out;
+# see claude-backup-lib.sh.
+#
 #   claude-backup             -> ./claude-home.tar.gz
 #   claude-backup <path>      -> that path
 set -euo pipefail
+
+source /opt/sbx/claude-backup-lib.sh
 
 SRC="$HOME/.claude"
 DEST="${1:-$PWD/claude-home.tar.gz}"
@@ -18,8 +23,6 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
-# The init marker stays out: restoring it would tell init-config.py that this
-# home is already configured, and the settings baked into a newer image would
-# never be merged over the restored ones.
-tar -czf "$DEST" --exclude=.claude/.sbx-config-initialized -C "$HOME" .claude
+mapfile -t excludes < <(managed_excludes)
+tar -czf "$DEST" "${excludes[@]}" -C "$HOME" .claude
 echo "backup: $SRC -> $DEST ($(du -h "$DEST" | cut -f1))"

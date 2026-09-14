@@ -24,6 +24,7 @@ sbx-dotfiles/
             git-context           # UserPromptSubmit hook: current git state into the prompt
         scripts/                  # -> /opt/sbx, plain data
             shim-lib.sh           # helper sourced by the uv wrapper
+            claude-backup-lib.sh  # what claude-backup/-restore leave out, sourced by both
             docker-daemon.sh      # stop/start dockerd, sourced by the docker-* commands
             init-config.py        # lays out ~/.claude on startup (idempotent)
             claude-settings.json.example # sample settings.json
@@ -115,6 +116,13 @@ By default the archive is written to the current directory — which is bind-mou
 to the host, so it survives a recreate. `claude-restore` extracts over `~`
 (merge: files from the archive overwrite, everything else is left alone); for a
 clean restore run `rm -rf ~/.claude && claude-restore <file>`.
+
+The archive is for state — sessions, memory, `.credentials.json`. Config that
+`init-config.py` lays out from the image (`settings.json`, `CLAUDE.md`, the
+status line, the init marker) stays out of it, and `claude-restore` skips those
+paths even when an older archive carries them; otherwise a restore would put a
+previous sandbox's config over the one this image just laid out. Config
+changes belong in `template/scripts/`, not in a backup.
 
 ## Backing up Docker state
 

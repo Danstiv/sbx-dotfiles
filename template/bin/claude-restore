@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Restore a ~/.claude snapshot made by claude-backup.sh.
+# Restore a ~/.claude snapshot made by claude-backup.
 #
 # Extracts the archive over $HOME: files present in the archive overwrite their
 # counterparts, anything not in the archive is left untouched (merge restore).
+# Image-managed config is skipped even if the archive carries it (older
+# archives do), so the config laid out by this image stays in force; see
+# claude-backup-lib.sh.
 # For a pristine restore, wipe first:  rm -rf ~/.claude && claude-restore <file>
 #
 #   claude-restore            <- ./claude-home.tar.gz
 #   claude-restore <path>     <- that path
 set -euo pipefail
+
+source /opt/sbx/claude-backup-lib.sh
 
 SRC="${1:-$PWD/claude-home.tar.gz}"
 
@@ -16,5 +21,6 @@ if [ ! -f "$SRC" ]; then
   exit 1
 fi
 
-tar -xzf "$SRC" -C "$HOME"
+mapfile -t excludes < <(managed_excludes)
+tar -xzf "$SRC" "${excludes[@]}" -C "$HOME"
 echo "restore: $SRC -> $HOME/.claude"
