@@ -56,8 +56,9 @@ appends mixins.
 It deliberately does not `extends` sbx's built-in `claude` kit (see
 [Permission mode](#permission-mode)), so what that kit would have provided is
 declared here verbatim from its spec: the Anthropic network allows and
-credential block, `IS_SANDBOX`, the `~/.claude/*` session volumes with their
-re-own step, and the MCP gateway registration. Those blocks are the one place
+credential block, `IS_SANDBOX`, and the MCP gateway registration (its
+`~/.claude/*` volumes are left out — they only outlive `sbx kit add` and
+`--model`, and `claude-backup` covers state). Those blocks are the one place
 this repo has to track sbx releases by hand — the built-in spec is embedded in
 `sbx.exe` as plain text (`grep -a 'kind: sandbox' sbx.exe`), so diffing it is
 cheap.
@@ -221,10 +222,12 @@ layer; `uv sync` rebuilds them.
 
 - `init-config.py` is idempotent (marker `~/.claude/.sbx-config-initialized`):
   config edits made inside the sandbox survive a restart.
-- On startup sbx generates a `CLAUDE.md` next to the workspace (the parent's
-  guidance plus any `agentInstructions` of ours — hence the kit has none);
-  `init-config.py` removes it when it contains sbx's own sentence about
-  `/etc/sandbox-persistent.sh`, so a hand-written CLAUDE.md is left untouched.
+- sbx drops its own `CLAUDE.md` into the workspace's parent directory on every
+  start (Claude reads memory files from parent directories) — generic sandbox
+  guidance, ~7k tokens in every session's context for little gain — and
+  `init-config.py` deletes it. That directory is not mounted from the host, so
+  nothing but sbx can put a file there. It is also why the kit declares no
+  `agentInstructions`: sbx would append them to the same file.
 - `init-config.py` also sets `hasSeenAutoDefaultNudge` in `~/.claude.json`, which
   suppresses the "Make auto mode your default permission mode?" dialog while
   leaving auto mode itself available. It runs ahead of the marker check, because

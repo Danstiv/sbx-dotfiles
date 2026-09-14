@@ -14,9 +14,6 @@ MARKER = CLAUDE_DIR / ".sbx-config-initialized"
 ASSETS = Path("/opt/sbx")
 DESIRED_FILE = ASSETS / "claude-settings.json"
 WORKDIR_FILE = Path.home() / ".sbx-workdir"
-# A sentence only sbx's generated guidance contains; a hand-written CLAUDE.md
-# next to the workspace must survive.
-GUIDANCE_MARK = "This sandbox has a persistent environment file at `/etc/sandbox-persistent.sh`"
 # Where git looks when core.excludesFile is unset.
 DEFAULT_EXCLUDES = Path.home() / ".config" / "git" / "ignore"
 
@@ -110,16 +107,17 @@ def install_global_gitignore():
 
 
 def remove_generated_guidance():
-    # Only the startup pass can catch this file: sbx writes it after the
-    # install commands have run.
+    # sbx writes its own CLAUDE.md into the workspace's parent directory so
+    # Claude picks it up from there. Inside the VM that directory is ephemeral
+    # and only the workspace itself is mounted, so nothing else can be there.
+    # Only the startup pass catches it: sbx writes it after the install
+    # commands have run.
     workdir = get_workdir()
     if workdir is None:
         return
     candidate = workdir.parent / "CLAUDE.md"
     try:
-        if candidate.is_file() and GUIDANCE_MARK in candidate.read_text(
-            encoding="utf-8", errors="ignore"
-        ):
+        if candidate.is_file():
             candidate.unlink()
             print(f"[sbx-init] removed generated guidance {candidate}")
     except OSError:

@@ -9,8 +9,10 @@ description: >-
 # Standalone on purpose — not `extends: claude`. Inheritance is additive, and
 # the built-in kit's entrypoint carries --dangerously-skip-permissions while its
 # install commands seed settings.json with defaultMode: bypassPermissions;
-# neither can be removed by a child. The blocks below are copied from that
-# kit's spec (embedded in sbx.exe) so nothing else is lost.
+# neither can be removed by a child. The network, environment and credentials
+# blocks and the MCP registration are copied from that kit's spec (embedded in
+# sbx.exe). Its ~/.claude/* volumes are not: they only outlive `sbx kit add`
+# and `--model`, neither of which applies here — claude-backup covers state.
 sandbox:
   image: claude-code-custom
   entrypoint: [claude]
@@ -31,21 +33,6 @@ permissions:
 environment:
   variables:
     IS_SANDBOX: "1"
-
-# Session state that survives recreate-shaped operations (`sbx kit add`,
-# `--model`). Mounted as subdirectories so settings.json and
-# .credentials.json keep coming from the image and the oauth hook.
-volumes:
-  - path: /home/agent/.claude/projects
-    size: 2g
-  - path: /home/agent/.claude/sessions
-    size: 512m
-  - path: /home/agent/.claude/todos
-    size: 512m
-  - path: /home/agent/.claude/shell-snapshots
-    size: 512m
-  - path: /home/agent/.claude/statsig
-    size: 512m
 
 credentials:
   - service: anthropic
@@ -102,14 +89,9 @@ setup:
           --header "Authorization: Bearer $MCP_SENTINEL_TOKEN_NAME" || true
       user: "agent"
       description: Register the sandbox MCP gateway with claude
-  # `command` is argv here, not a shell string.
+  # `command` is argv here, not a shell string. Covers restarts and the steps
+  # ahead of the idempotence marker.
   startup:
-    # The block volumes above mount with a root-owned root (ext4 mkfs), which
-    # shadows the image's ownership; re-own them before any agent activity.
-    - command: ["sh", "-c", "chown -R agent:agent /home/agent/.claude/projects /home/agent/.claude/sessions /home/agent/.claude/todos /home/agent/.claude/shell-snapshots /home/agent/.claude/statsig 2>/dev/null || true"]
-      user: "0"
-      description: Re-own the session-state volumes to the agent user
-    # Covers restarts and the steps ahead of the idempotence marker.
     - command: ["python3", "/opt/sbx/init-config.py"]
       user: "1000"
       description: Re-apply config on restart
