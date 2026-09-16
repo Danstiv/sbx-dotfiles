@@ -67,6 +67,28 @@ this repo has to track sbx releases by hand — the built-in spec is embedded in
 `sbx.exe` as plain text (`grep -a 'kind: sandbox' sbx.exe`), so diffing it is
 cheap.
 
+### MCP gateway, per sandbox
+
+That registration is behind a kit argument, chosen when the sandbox is created:
+
+```bash
+sbx run ./kit --name <sandbox> --kit-arg mcp=off   # default is mcp=on
+```
+
+`off` skips `claude mcp add`, so the agent starts with no MCP server and
+without `mcp-find`/`mcp-add`/`code-mode`.
+
+It is a convenience switch, not a boundary. sbx provisions a gateway for every
+sandbox and injects `MCP_GATEWAY_URL` regardless; `mcp-gateway.docker.internal`
+answers from inside the VM either way, and a network policy `deny` does not
+reach it — that host is routed by the proxy itself, outside policy evaluation.
+Docker's own documentation is explicit that MCP has no local preset equivalent
+to network policy; restricting it needs organization governance.
+
+Left on, the sandbox can also attach any server registered on the host with
+`sbx mcp add`, including one registered for a *different* sandbox — the call
+then goes out under that sandbox's identity.
+
 ## Notification sounds (optional, set up on the host)
 
 There is no audio inside the VM, and the sandbox blocks raw UDP/TCP at the

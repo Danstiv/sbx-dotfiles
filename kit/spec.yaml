@@ -17,6 +17,18 @@ sandbox:
   image: claude-code-custom
   entrypoint: [claude]
 
+# Picked per sandbox at creation: `sbx run ./kit --kit-arg mcp=off`. sbx always
+# provisions a gateway and injects MCP_GATEWAY_URL — there is no way to turn
+# that off — so "off" only keeps the server out of the agent's config; the
+# endpoint stays reachable from inside the VM.
+args:
+  mcp:
+    default: "on"
+    enum: ["on", "off"]
+    description: >-
+      Register the sbx MCP gateway with claude. "off" leaves the sandbox with
+      no MCP server configured.
+
 permissions:
   network:
     allow:
@@ -81,6 +93,7 @@ setup:
     # (it is not an idempotent rewrite), hence `|| true`.
     - command: |
         set -e
+        [ "${{ kit.args.mcp }}" = "on" ] || exit 0
         [ -n "$MCP_GATEWAY_URL" ] || exit 0
         export PATH="$HOME/.local/bin:$HOME/.claude/local:$PATH"
         claude mcp add mcp-gateway "$MCP_GATEWAY_URL" \
