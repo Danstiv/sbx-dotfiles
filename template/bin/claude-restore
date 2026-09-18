@@ -8,13 +8,23 @@
 # claude-backup-lib.sh.
 # For a pristine restore, wipe first:  rm -rf ~/.claude && claude-restore <file>
 #
-#   claude-restore            <- ./claude-home.tar.gz
-#   claude-restore <path>     <- that path
+#   claude-restore            <- newest archive in ./claude-backups/
+#   claude-restore <dir>      <- newest archive in that directory
+#   claude-restore <file>     <- exactly that archive
 set -euo pipefail
 
 source /opt/sbx/claude-backup-lib.sh
 
-SRC="${1:-$PWD/claude-home.tar.gz}"
+if [ $# -eq 0 ] || [ -d "${1:-}" ]; then
+  DIR="${1:-$(get_default_dir)}"
+  SRC=$(find_latest_archive "$DIR")
+  if [ -z "$SRC" ]; then
+    echo "restore: no claude-home-*.tar.gz in $DIR" >&2
+    exit 1
+  fi
+else
+  SRC="$1"
+fi
 
 if [ ! -f "$SRC" ]; then
   echo "restore: archive $SRC not found" >&2

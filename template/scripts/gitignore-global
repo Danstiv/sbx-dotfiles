@@ -3,5 +3,5 @@
 #
 # claude-backup and docker-backup write into the workspace (the only thing that
 # survives a recreate), i.e. into the repo mounted there.
-claude-home.tar.gz
+claude-backups/
 docker-data.tar.zst

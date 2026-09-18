@@ -24,7 +24,7 @@ sbx-dotfiles/
             git-context           # UserPromptSubmit hook: current git state into the prompt
         scripts/                  # -> /opt/sbx, plain data
             shim-lib.sh           # helper sourced by the uv wrapper
-            claude-backup-lib.sh  # what claude-backup/-restore leave out, sourced by both
+            claude-backup-lib.sh  # archive paths and what to leave out, sourced by both
             docker-daemon.sh      # stop/start dockerd, sourced by the docker-* commands
             init-config.py        # lays out ~/.claude on startup (idempotent)
             claude-settings.json.example # sample settings.json
@@ -132,17 +132,24 @@ recreate `~/.claude` (session history, memory, config edits) is wiped. Two
 commands are baked into the image:
 
 ```bash
-claude-backup            # -> ./claude-home.tar.gz (in the working dir = on the mount)
-claude-restore           # <- ./claude-home.tar.gz
+claude-backup            # -> ./claude-backups/claude-home-20260917-143002.tar.gz
+claude-restore           # <- newest archive in ./claude-backups/
 
-claude-backup <path>     # custom path
-claude-restore <path>
+claude-backup <dir>      # timestamped file in that directory
+claude-restore <dir>     # newest archive in that directory
+claude-backup <file>     # exactly that path
+claude-restore <file>
 ```
 
-By default the archive is written to the current directory — which is bind-mounted
-to the host, so it survives a recreate. `claude-restore` extracts over `~`
-(merge: files from the archive overwrite, everything else is left alone); for a
-clean restore run `rm -rf ~/.claude && claude-restore <file>`.
+By default the archives go to `claude-backups/` in the current directory — which
+is bind-mounted to the host, so they survive a recreate. Each run writes its own
+timestamped file, so a backup never lands on an earlier one; an existing archive
+is overwritten only when you name it explicitly. Old archives are kept until you
+delete them.
+
+`claude-restore` extracts over `~` (merge: files from the archive overwrite,
+everything else is left alone); for a clean restore run
+`rm -rf ~/.claude && claude-restore <file>`.
 
 The archive is for state — sessions, memory, `.credentials.json`. Config that
 `init-config.py` lays out from the image (`settings.json`, `CLAUDE.md`, the
@@ -164,7 +171,7 @@ docker-restore           # wipes /var/lib/docker, then restores
 ```
 
 Both archives land in the workspace, i.e. inside the mounted repo, so
-`init-config.py` appends `claude-home.tar.gz` and `docker-data.tar.zst` to
+`init-config.py` appends `claude-backups/` and `docker-data.tar.zst` to
 git's global excludes — the file `core.excludesFile` names, else
 `~/.config/git/ignore`. sbx sets that key itself when it writes the sandbox's
 `~/.gitconfig`, pointing at its own `~/.gitignore_global` (just `.sbx`), and

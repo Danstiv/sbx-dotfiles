@@ -2,26 +2,38 @@
 # Snapshot ~/.claude into a tarball.
 #
 # The sandbox filesystem is ephemeral: only the workspace bind-mount survives a
-# recreate. The default destination is the current directory, which inside the
-# sandbox IS the mounted workspace — so the archive persists on the host. Pass an
-# explicit path to put it elsewhere.
+# recreate. The default destination is a directory in the current directory,
+# which inside the sandbox IS the mounted workspace — so the archives persist on
+# the host. Each run writes its own timestamped file; an earlier archive is
+# overwritten only if you name it explicitly.
 #
 # Image-managed config (settings.json, CLAUDE.md, the status line) is left out;
 # see claude-backup-lib.sh.
 #
-#   claude-backup             -> ./claude-home.tar.gz
-#   claude-backup <path>      -> that path
+#   claude-backup             -> ./claude-backups/claude-home-<date>-<time>.tar.gz
+#   claude-backup <dir>       -> a timestamped file in that directory
+#   claude-backup <file>      -> exactly that path
 set -euo pipefail
 
 source /opt/sbx/claude-backup-lib.sh
 
 SRC="$HOME/.claude"
-DEST="${1:-$PWD/claude-home.tar.gz}"
+
+# A trailing slash marks a directory that does not exist yet.
+if [ $# -eq 0 ]; then
+  DEST=$(build_archive_path "$(get_default_dir)")
+elif [ -d "$1" ] || [ "$1" != "${1%/}" ]; then
+  DEST=$(build_archive_path "$1")
+else
+  DEST="$1"
+fi
 
 if [ ! -d "$SRC" ]; then
   echo "backup: $SRC does not exist, nothing to back up" >&2
   exit 1
 fi
+
+mkdir -p "$(dirname "$DEST")"
 
 mapfile -t excludes < <(managed_excludes)
 tar -czf "$DEST" "${excludes[@]}" -C "$HOME" .claude
