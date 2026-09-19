@@ -11,9 +11,16 @@
 #
 #   docker-backup            -> <workspace>/docker-data.tar.zst
 #   docker-backup <path>     -> that path
+#   docker-backup -f         # overwrite an existing archive without asking
 set -euo pipefail
 
 DATA_ROOT=/var/lib/docker
+FORCE=0
+
+if [ "${1:-}" = "-f" ] || [ "${1:-}" = "--force" ]; then
+  FORCE=1
+  shift
+fi
 
 workspace_root() {
   local f="$HOME/.sbx-workdir" dir
@@ -25,6 +32,13 @@ workspace_root() {
 }
 
 DEST="${1:-$(workspace_root)/docker-data.tar.zst}"
+
+if [ "$FORCE" != 1 ] && [ -e "$DEST" ]; then
+  echo "$DEST already exists ($(du -h "$DEST" | cut -f1)) and will be overwritten."
+  reply=""
+  read -r -p "Continue? [y/N] " reply || true    # no tty -> empty -> abort
+  case "$reply" in [yY]*) ;; *) echo "aborted"; exit 1 ;; esac
+fi
 
 source /opt/sbx/docker-daemon.sh
 

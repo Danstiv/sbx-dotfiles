@@ -11,11 +11,19 @@
 #   claude-restore            <- newest archive in ./claude-backups/
 #   claude-restore <dir>      <- newest archive in that directory
 #   claude-restore <file>     <- exactly that archive
+#   claude-restore -f [...]   # skip the confirmation
 #
 # tar sniffs the compression, so both .tar.zst and .tar.gz archives restore.
 set -euo pipefail
 
 source /opt/sbx/claude-backup-lib.sh
+
+FORCE=0
+
+if [ "${1:-}" = "-f" ] || [ "${1:-}" = "--force" ]; then
+  FORCE=1
+  shift
+fi
 
 if [ $# -eq 0 ] || [ -d "${1:-}" ]; then
   DIR="${1:-$(get_default_dir)}"
@@ -31,6 +39,14 @@ fi
 if [ ! -f "$SRC" ]; then
   echo "restore: archive $SRC not found" >&2
   exit 1
+fi
+
+if [ "$FORCE" != 1 ]; then
+  echo "This extracts $SRC ($(du -h "$SRC" | cut -f1)) over $HOME,"
+  echo "overwriting the files it carries."
+  reply=""
+  read -r -p "Continue? [y/N] " reply || true    # no tty -> empty -> abort
+  case "$reply" in [yY]*) ;; *) echo "aborted"; exit 1 ;; esac
 fi
 
 mapfile -t excludes < <(managed_excludes)

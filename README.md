@@ -139,6 +139,7 @@ claude-backup <dir>      # timestamped file in that directory
 claude-restore <dir>     # newest archive in that directory
 claude-backup <file>     # exactly that path
 claude-restore <file>
+claude-restore -f [...]  # skip the confirmation
 ```
 
 By default the archives go to `claude-backups/` in the current directory — which
@@ -155,7 +156,9 @@ restore.
 
 `claude-restore` extracts over `~` (merge: files from the archive overwrite,
 everything else is left alone); for a clean restore run
-`rm -rf ~/.claude && claude-restore <file>`.
+`rm -rf ~/.claude && claude-restore <file>`. It names the archive with its size
+and waits for `y` first, unless called with `-f`; without a tty the empty answer
+aborts.
 
 The archive is for state — sessions, memory, `.credentials.json`. Config that
 `init-config.py` lays out from the image (`settings.json`, `CLAUDE.md`, the
@@ -175,6 +178,11 @@ deletes it. That takes with it built images, the build cache and named volumes
 docker-backup            # -> <workspace>/docker-data.tar.zst
 docker-restore           # wipes /var/lib/docker, then restores
 ```
+
+Both ask before destroying something: `docker-backup` when the destination
+archive already exists (naming its current size), `docker-restore` always
+(naming the size of the data root it is about to wipe). `-f` skips the question;
+without a tty the empty answer aborts.
 
 Both archives land in the workspace, i.e. inside the mounted repo, so
 `init-config.py` appends `claude-backups/` and `docker-data.tar.zst` to
