@@ -132,7 +132,7 @@ recreate `~/.claude` (session history, memory, config edits) is wiped. Two
 commands are baked into the image:
 
 ```bash
-claude-backup            # -> ./claude-backups/claude-home-20260917-143002.tar.gz
+claude-backup            # -> ./claude-backups/claude-home-20260917-143002.tar.zst
 claude-restore           # <- newest archive in ./claude-backups/
 
 claude-backup <dir>      # timestamped file in that directory
@@ -146,6 +146,12 @@ is bind-mounted to the host, so they survive a recreate. Each run writes its own
 timestamped file, so a backup never lands on an earlier one; an existing archive
 is overwritten only when you name it explicitly. Old archives are kept until you
 delete them.
+
+Compression is zstd at level 10, overridable with `ZSTD_LEVEL`. On a ~120 MiB
+`~/.claude` that is 17 MiB in under a second, against 30 MiB and 2.4 s for gzip;
+levels above 10 buy tenths of a megabyte per extra second. `claude-restore`
+sniffs the compression instead of the extension, so `.tar.gz` archives still
+restore.
 
 `claude-restore` extracts over `~` (merge: files from the archive overwrite,
 everything else is left alone); for a clean restore run

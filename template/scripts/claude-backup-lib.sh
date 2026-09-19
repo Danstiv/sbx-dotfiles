@@ -31,19 +31,19 @@ get_default_dir() {
 # clock instead of overwriting; a suffix would break the sort by name below.
 build_archive_path() {
   local dir="${1%/}" path
-  path="$dir/claude-home-$(date +%Y%m%d-%H%M%S).tar.gz"
+  path="$dir/claude-home-$(date +%Y%m%d-%H%M%S).tar.zst"
   while [ -e "$path" ]; do
     sleep 1
-    path="$dir/claude-home-$(date +%Y%m%d-%H%M%S).tar.gz"
+    path="$dir/claude-home-$(date +%Y%m%d-%H%M%S).tar.zst"
   done
   printf '%s' "$path"
 }
 
-# Newest archive in a directory; the timestamp in the name sorts chronologically.
-# Prints nothing if the directory holds none.
+# Newest archive in a directory; the timestamp in the name sorts chronologically,
+# whatever the compression. Prints nothing if the directory holds none.
 find_latest_archive() {
   local f latest=""
-  for f in "${1%/}"/claude-home-*.tar.gz; do
+  for f in "${1%/}"/claude-home-*.tar.zst "${1%/}"/claude-home-*.tar.gz; do
     [ -f "$f" ] || continue
     if [ -z "$latest" ] || [[ "$f" > "$latest" ]]; then
       latest="$f"

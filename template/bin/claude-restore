@@ -11,6 +11,8 @@
 #   claude-restore            <- newest archive in ./claude-backups/
 #   claude-restore <dir>      <- newest archive in that directory
 #   claude-restore <file>     <- exactly that archive
+#
+# tar sniffs the compression, so both .tar.zst and .tar.gz archives restore.
 set -euo pipefail
 
 source /opt/sbx/claude-backup-lib.sh
@@ -19,7 +21,7 @@ if [ $# -eq 0 ] || [ -d "${1:-}" ]; then
   DIR="${1:-$(get_default_dir)}"
   SRC=$(find_latest_archive "$DIR")
   if [ -z "$SRC" ]; then
-    echo "restore: no claude-home-*.tar.gz in $DIR" >&2
+    echo "restore: no claude-home-* archive in $DIR" >&2
     exit 1
   fi
 else
@@ -32,5 +34,5 @@ if [ ! -f "$SRC" ]; then
 fi
 
 mapfile -t excludes < <(managed_excludes)
-tar -xzf "$SRC" "${excludes[@]}" -C "$HOME"
+tar -xf "$SRC" "${excludes[@]}" -C "$HOME"
 echo "restore: $SRC -> $HOME/.claude"
