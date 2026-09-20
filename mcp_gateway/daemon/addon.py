@@ -42,19 +42,17 @@ REFUSAL = {
 }
 
 
-def split_sandbox(path: str, sandboxes: tuple[str, ...]) -> tuple[str, str | None]:
-    """`/mcp-sbx?x=1` -> `('/mcp?x=1', 'sbx')`.
+SANDBOX_HEADER = "X-Sbx-Sandbox"
 
-    Nothing in the outgoing request says which sandbox it came from — one
-    daemon serves them all — so the identity is put into the URL at
-    registration time and taken back out here.
+
+def take_sandbox(request: http.Request, sandboxes: tuple[str, ...]) -> str | None:
+    """Read the sandbox name out of the request, taking the header with it.
+
+    The header is ours, not the server's, so it is removed either way. A name
+    the policy does not list is no name at all.
     """
-    base, sep, query = path.partition("?")
-    for sandbox in sandboxes:
-        suffix = "-" + sandbox
-        if base.endswith(suffix):
-            return base[: -len(suffix)] + sep + query, sandbox
-    return path, None
+    name = request.headers.pop(SANDBOX_HEADER, None)
+    return name if name in sandboxes else None
 
 
 @dataclass(frozen=True)
@@ -133,9 +131,17 @@ class GateAddon:
             return
 
         host = flow.request.pretty_host
-        path, sandbox = split_sandbox(flow.request.path, self._policy.load().sandboxes)
+        if logger.isEnabledFor(logging.DEBUG):
+            # The only view of what sbx actually put on the wire, and the one
+            # place the marker is still visible — it is taken off just below.
+            shown = {
+                name: "<redacted>" if name.lower() == "authorization" else value
+                for name, value in flow.request.headers.items()
+            }
+            logger.debug(f"{flow.request.method} {host}{flow.request.path} {shown}")
+
+        sandbox = take_sandbox(flow.request, self._policy.load().sandboxes)
         if sandbox is not None:
-            flow.request.path = path
             token = self._tokens.get(host)
             if token is not None:
                 # Lent only to a request that named a sandbox we know. Without
@@ -172,14 +178,13 @@ class GateAddon:
         if sandbox is None and isinstance(method, str):
             # Announced for any MCP method, not only tools/call. The first
             # thing a session sends is initialize, and that is the moment a
-            # sandbox missing from the policy shows up — waiting for a tool
-            # call means waiting for a session that will never open.
+            # server registered without the marker shows up — waiting for a
+            # tool call means waiting for one that may never come.
             #
-            # Only the tool call is refused. The rest is forwarded as it
-            # stands: with the suffix unrecognised the path was never
-            # rewritten, so it 404s upstream by itself. Nothing is left to
-            # prevent here, only somebody to tell.
-            logger.warning(f"{method} on {host} carries no known sandbox suffix")
+            # Only the tool call is refused; the rest is forwarded, so the
+            # session opens and the agent is told at the point it tries to do
+            # something. Nothing else here has a side effect to prevent.
+            logger.warning(f"{method} on {host} carries no known sandbox marker")
             self._publish(
                 protocol.event(
                     protocol.Event.UNKNOWN_SANDBOX,
@@ -191,7 +196,7 @@ class GateAddon:
             )
             if call is None:
                 return
-            flow.response = refusal(call, "Refused: request carries no known sandbox suffix.")
+            flow.response = refusal(call, "Refused: request carries no known sandbox marker.")
             return
 
         if call is None:

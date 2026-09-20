@@ -64,8 +64,8 @@ class Policy:
     # Hosts to gate. Traffic to anything else is not touched.
     hosts: tuple[str, ...] = ()
 
-    # Sandbox names accepted as a URL path suffix. Also a whitelist: a suffix
-    # that is not listed is not recognised, and the call is refused.
+    # Sandbox names accepted in the X-Sbx-Sandbox header. Also a whitelist: a
+    # name that is not listed is not recognised, and the call is refused.
     sandboxes: tuple[str, ...] = ()
 
     # Tools that are confirmed every time; "always" is never offered for them,

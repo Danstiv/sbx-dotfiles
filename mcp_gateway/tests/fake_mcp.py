@@ -16,6 +16,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+from daemon.addon import SANDBOX_HEADER
 
 
 def issue_certs(directory: Path, hostname: str = "localhost") -> tuple[Path, Path]:
@@ -71,6 +72,7 @@ class FakeMCP:
         self.seen: list[dict] = []
         self.paths: list[str] = []
         self.authorization: list[str | None] = []
+        self.markers: list[str | None] = []
         # Held by the SSE branch below until the test says the first event has
         # arrived. If anything in the chain buffers the response body, that
         # event never arrives and this never releases — which is the point.
@@ -89,10 +91,11 @@ class FakeMCP:
                 recorder.seen.append(body)
                 recorder.paths.append(self.path)
                 recorder.authorization.append(self.headers.get("Authorization"))
+                recorder.markers.append(self.headers.get(SANDBOX_HEADER))
 
                 if self.path != "/mcp":
-                    # The canary: the suffixed path does not exist upstream, so
-                    # anything that skipped the gate is answered with a 404.
+                    # A real server has one endpoint, so anything else here is
+                    # the gate having mangled the path on the way through.
                     self.send_response(404)
                     self.send_header("Content-Length", "0")
                     self.end_headers()

@@ -38,7 +38,7 @@ The e2e tests are not mocked: they issue a throwaway CA, run a real HTTPS server
 An approval gate for MCP `tools/call`, sitting on the host outside the VM: `agent (VM) → sbx gateway → sandboxd → this daemon → MCP server`. Layering, strictly one-way:
 
 - `protocol/` — the wire vocabulary (`StrEnum`s + constructor functions), imported by both ends so the daemon and any client cannot drift. Nine message types, nothing else.
-- `daemon/addon.py` — the *only* module that touches mitmproxy or HTTP. Parses bodies, strips the sandbox suffix, attaches tokens, writes refusals.
+- `daemon/addon.py` — the *only* module that touches mitmproxy or HTTP. Parses bodies, strips the sandbox marker, attaches tokens, writes refusals.
 - `daemon/gate.py` — the holding pen: pending calls as futures, keyed by id. Knows nothing about mitmproxy or websockets, which is what lets a client drop mid-prompt without losing the call.
 - `daemon/control.py` — websocket server, auth, broadcast. Owns no state about pending calls.
 - `daemon/config.py` — all file I/O (`Config`, `PolicyFile`, `DecisionStore`, secret/token readers).
@@ -49,7 +49,8 @@ mitmproxy is used as a library, not as a `mitmdump` subprocess.
 ### Invariants worth not breaking
 
 - **A refused call is HTTP 200 with `isError: true`.** sbx reads any 4xx from a backend as "not authorized" and parks the whole server until it is kicked by hand. Only a body that could not be parsed far enough to name a tool gets a JSON-RPC `error` object (still inside a 200).
-- **Sandbox identity is the URL path suffix** (`/mcp-project1` → sandbox `project1`, path rewritten to `/mcp`). Nothing else in the request says which sandbox called. A suffix absent from `policy.json` means the call is unattributable: the `tools/call` is refused, everything else is forwarded un-rewritten and 404s upstream — which doubles as the canary that the gate is still in the path.
+- **Sandbox identity is the `X-Sbx-Sandbox` header**, registered per server with `sbx mcp add … --header 'X-Sbx-Sandbox: project1'`; sbx forwards it verbatim and validates nothing, and the daemon takes it off before the request goes upstream. Nothing sbx sends of its own says which sandbox called. It cannot be a URL marker: sbx checks the registered URL against the `resource` a server publishes in its RFC 9728 metadata, so a suffix, query, port or host of one's own fails registration against an OAuth server. A value absent from `policy.json` means the call is unattributable: the `tools/call` is refused, everything else is forwarded.
+- **Nothing forces MCP traffic through the gate.** The registered URL is real, so a call that skips the proxy succeeds ungated and unnoticed. The route is held by two sbx settings (`proxy.daemon`, `mcp.forceLocalGateway`), not by anything in this code; only hosts whose credential lives in `tokens.json` fail closed on their own. Weighed and accepted — see README §Limits before trading it away again.
 - **Decisions are keyed by `(sandbox, host, tool)`.** The host is in the key because tool names collide across MCP servers (`get_issue` exists in both Linear and GitHub).
 - **Only `tools/call` is gated.** `initialize`, `tools/list`, notifications and OAuth pass through, reported as `passthrough` events.
 - **Requests are buffered and parsed; responses never are.** MCP answers over `text/event-stream` and may hold a stream open forever — `responseheaders` sets `flow.response.stream = True`. Bodies over `MAX_BODY` (1 MB) are refused rather than waved through, and a JSON array (a JSON-RPC batch) is refused rather than forwarded.

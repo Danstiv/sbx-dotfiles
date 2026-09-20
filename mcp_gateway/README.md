@@ -53,16 +53,18 @@ somebody else's well-tested problem.
 
 ## How a sandbox is identified
 
-Nothing in the outgoing request says which sandbox it came from: one daemon
-serves them all, there is no per-sandbox header, and the session id is not
-carried upstream. So the identity is put into the URL at registration time:
+Nothing sbx sends of its own says which sandbox a call came from: one daemon
+serves them all, and the session id is not carried upstream. So the identity is
+registered as a custom header:
 
 ```
-sbx mcp add linear-project1 --url https://mcp.linear.app/mcp-project1
+sbx mcp add linear-project1 --url https://mcp.linear.app/mcp --header 'X-Sbx-Sandbox: project1'
 ```
 
-The daemon reads `project1` back out of the path and rewrites the path to
-`/mcp` before forwarding. Decisions are then stored per sandbox, not globally.
+sbx passes that header through verbatim and never looks at it. The daemon reads
+`project1` out of it and takes the header off before forwarding — it is a
+marker for the gate, not something the server should see. Decisions are then
+stored per sandbox, not globally.
 
 Registering a server does not yet hand it to anybody. That is a second move,
 and there are two ways to make it depending on whether the sandbox exists:
@@ -74,22 +76,21 @@ sbx run --name project1 --static-mcp linear-project1,github-project1  # at creat
 
 `--static-mcp` takes registered server names, comma-separated.
 
-Naming the sandbox after its suffix is a convention, not a requirement: the
+Naming the sandbox after its marker is a convention, not a requirement: the
 daemon never learns the real name — nothing in the request carries it — so the
-suffix is simply what the prompt and `decisions.json` will call this sandbox.
-What *is* enforced is that the suffix appears in `policy.json`. An unrecognised
-one leaves the call unattributable, so the `tools/call` is refused; the rest of
-the session is forwarded untouched and 404s upstream on the un-rewritten path.
+marker is simply what the prompt and `decisions.json` will call this sandbox.
+What *is* enforced is that it appears in `policy.json`. An unrecognised value,
+or none at all, leaves the call unattributable: the `tools/call` is refused and
+the rest of the session is forwarded untouched, so the agent is told at the
+point it tries to act rather than by a session that never opens.
 
-**This doubles as a canary.** The registered path does not exist upstream, so a
-request that reaches the server without passing through the daemon gets a 404
-and fails. There is no silent bypass: if the route breaks, MCP stops working.
-
-The cost is worth knowing: sbx reads that 404 as "backend not authorized" and
+A refusal is a normal JSON-RPC response carrying `isError: true` rather than an
+HTTP error, because sbx reads a 4xx from a backend as "not authorized" and
 parks the server until it is kicked with `sbx mcp load <server> --sandbox
-<name>`. That is why a *refusal* from this gate is a normal JSON-RPC response
-carrying `isError: true` rather than an HTTP error — the agent sees a failed
-tool, the connection stays healthy.
+<name>`. The agent sees a failed tool, the connection stays healthy.
+
+Nothing about this arrangement forces the traffic through the daemon, and the
+gate cannot tell that it was skipped — see [Limits](#limits).
 
 ## Setup
 
@@ -101,28 +102,31 @@ is nothing to do. Otherwise let the daemon start once to generate it, then:
 certutil -addstore -f Root "%USERPROFILE%\.mitmproxy\mitmproxy-ca-cert.cer"
 ```
 
-**2. Send sandboxd's traffic through it.** sandboxd honours the proxy
-environment variables and passes them to the daemon it starts, so this is the
-whole of it:
+**2. Send sandboxd's traffic through it, and keep MCP on the local gateway.**
+Both are sbx settings rather than environment variables, so they hold whichever
+shell the daemon is started from:
 
 ```powershell
-$env:HTTPS_PROXY = "http://127.0.0.1:8080"
-sbx daemon start -d
+sbx settings set proxy.daemon http://127.0.0.1:8080
+sbx settings set mcp.forceLocalGateway true
+sbx daemon restart
 ```
 
-It is only needed on the shell that starts the daemon. `sbx mcp add` is the CLI
-talking to the server itself, and its OAuth flow never touches the suffixed
-path, so it works with the gate stopped altogether. `sbx mcp load` reaches
-sandboxd over IPC, and sandboxd already has the proxy — which is why that one
-*fails* while the gate is down.
+The second matters as much as the first: with an entitlement to Docker's SaaS
+MCP gateway, sbx serves MCP from there and the calls never come near this
+proxy at all.
+
+`sbx mcp add` is the CLI talking to the server itself, so it works with the
+gate stopped altogether. `sbx mcp load` reaches sandboxd over IPC, and sandboxd
+has the proxy — which is why that one *fails* while the gate is down.
 
 It does mean the proxy sees *all* of sandboxd's traffic, not just MCP. Only the
 hosts in `policy.json` have their TLS terminated; everything else is tunnelled
 through untouched, which is both cheaper and none of the gate's business.
 
-**3. Register servers with a sandbox suffix** and hand them over by either of
+**3. Register servers with a sandbox marker** and hand them over by either of
 the two routes above. Never dynamic mode — there the agent gets `mcp-find` and
-`mcp-add` and can attach servers of its own, with no suffix and no decisions
+`mcp-add` and can attach servers of its own, with no marker and no decisions
 recorded, which defeats all of this.
 
 **4. Copy the examples:**
@@ -204,25 +208,25 @@ awkward for a server like GitHub's that has no dynamic client registration:
 you would have to register an OAuth application, pass `--client-id`, store a
 client secret, and accept scopes as coarse as `repo`.
 
-The gate is already terminating TLS for that host and already rewriting the
-path, so it can attach the credential instead:
+The gate is already terminating TLS for that host, so it can attach the
+credential instead:
 
 ```json
 {"api.githubcopilot.com": "github_pat_..."}
 ```
-
-This is not the same as `sbx secret set`. sbx substitutes stored secrets on
-its own egress, but the MCP gateway is served by a different path and does not
-go through that substitution — a server registered with a placeholder gets the
-placeholder, fails, and is parked. The gate sits further out still, past
-everything sbx controls, which is why it can do this at all.
 
 `sbx` then sees a server that never answers 401 and registers it with no OAuth
 at all. The token never enters the sandbox and never enters the sbx credential
 store — it is on the host, in one file, read once at startup. A fine-grained
 personal access token also scopes better than an OAuth app can.
 
-It is attached only to a request that carried a known sandbox suffix. Without
+Holding it here is also what keeps the route non-optional for this host: a
+request that reaches the server without passing through the daemon carries no
+credential and is turned down. Registering the token as a header of sbx's own
+(`--header 'Authorization: Bearer ${secret}'`, which sbx does substitute) gives
+exactly that away.
+
+It is attached only to a request that carried a known sandbox marker. Without
 one the gate cannot say whose call it is, and an anonymous caller is not one to
 lend a credential to.
 
@@ -274,12 +278,18 @@ hold a stream open indefinitely.
   MCP.
 - **A token in `tokens.json` is reachable from inside the sandbox.** All of
   sandboxd's traffic goes through the proxy, the sandbox's own included, so an
-  agent that speaks to a gated host with a valid sandbox suffix gets the token
+  agent that speaks to a gated host with a valid sandbox marker gets the token
   attached. `tools/call` is still held for approval; the other MCP methods are
   not. Give the token no more than the gate is worth.
+- **A call that skips the proxy is not gated, and nothing here notices.** The
+  registered URL is the server's real one, so MCP keeps working with the daemon
+  out of the path — silently, for any server whose credential sbx holds. What
+  keeps the route in place is the two settings in step 2 of the setup, which is
+  why they are settings and not an environment variable somebody has to
+  remember. Hosts whose credential is the gate's fail closed instead.
 - **Everything rests on sbx trusting the system certificate store.** If a
-  future build pins certificates, interception stops working — loudly, which is
-  the point of the canary.
+  future build pins certificates, interception stops working. That failure is
+  loud: TLS breaks rather than quietly bypassing the gate.
 
 ## Tests
 

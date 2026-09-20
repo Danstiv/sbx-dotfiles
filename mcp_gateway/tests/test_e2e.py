@@ -13,6 +13,7 @@ import httpx
 import protocol
 import pytest
 import websockets
+from daemon.addon import SANDBOX_HEADER
 from daemon.main import run
 from daemon.config import MAX_BODY, Config
 
@@ -129,14 +130,20 @@ def call(tool: str, **arguments) -> dict:
     }
 
 
-async def post(client: httpx.AsyncClient, config: Config, port: int, body: dict, path: str):
-    return await client.post(f"https://localhost:{port}{path}", json=body)
+async def post(client: httpx.AsyncClient, port: int, body: dict, sandbox: str | None = "sbx"):
+    """One request to the fake server, marked as coming from `sandbox`.
+
+    The URL is the server's real one now; `None` is a server registered
+    without the marker at all.
+    """
+    headers = {} if sandbox is None else {SANDBOX_HEADER: sandbox}
+    return await client.post(f"https://localhost:{port}/mcp", json=body, headers=headers)
 
 
-async def test_allowed_call_reaches_upstream_with_the_suffix_stripped(stand):
+async def test_allowed_call_reaches_upstream_with_the_marker_stripped(stand):
     config, upstream, client, operator = stand
     pending = asyncio.create_task(
-        post(client, config, upstream.port, call("save_issue", title="hi"), "/mcp-sbx")
+        post(client, upstream.port, call("save_issue", title="hi"))
     )
 
     held = await operator.next_of(protocol.Message.REQUEST)
@@ -148,14 +155,14 @@ async def test_allowed_call_reaches_upstream_with_the_suffix_stripped(stand):
     response = await pending
     assert response.status_code == 200
     assert response.json()["result"]["content"][0]["text"] == "did the thing"
-    # The sandbox suffix is a routing marker, not something upstream should see.
-    assert upstream.paths == ["/mcp"]
+    # The marker is ours to read, not the server's to see.
+    assert upstream.markers == [None]
 
 
 async def test_denied_call_never_reaches_upstream(stand):
     config, upstream, client, operator = stand
     pending = asyncio.create_task(
-        post(client, config, upstream.port, call("save_issue", title="no"), "/mcp-sbx")
+        post(client, upstream.port, call("save_issue", title="no"))
     )
 
     held = await operator.next_of(protocol.Message.REQUEST)
@@ -175,7 +182,7 @@ async def test_an_expired_call_does_not_blame_the_user(stand):
     been denied. "I said no" and "I was away" call for different next steps."""
     config, upstream, client, operator = stand
     body = call("save_issue", title="unattended")
-    response = await post(client, config, upstream.port, body, "/mcp-sbx")
+    response = await post(client, upstream.port, body)
 
     text = response.json()["result"]["content"][0]["text"]
     assert response.json()["result"]["isError"] is True
@@ -187,14 +194,14 @@ async def test_an_expired_call_does_not_blame_the_user(stand):
 async def test_always_is_remembered_and_the_next_call_is_not_held(stand):
     config, upstream, client, operator = stand
     pending = asyncio.create_task(
-        post(client, config, upstream.port, call("list_teams"), "/mcp-sbx")
+        post(client, upstream.port, call("list_teams"))
     )
     held = await operator.next_of(protocol.Message.REQUEST)
     await operator.answer(held["request"]["id"], "always")
     assert (await pending).status_code == 200
 
     second = asyncio.create_task(
-        post(client, config, upstream.port, call("list_teams"), "/mcp-sbx")
+        post(client, upstream.port, call("list_teams"))
     )
     event = await operator.next_of(protocol.Message.EVENT)
     assert event["kind"] == protocol.Event.AUTO_ALLOWED
@@ -206,27 +213,27 @@ async def test_always_is_remembered_and_the_next_call_is_not_held(stand):
 
 
 async def test_a_forgotten_sandbox_shows_up_at_initialize(stand):
-    """The failure this catches: `sbx mcp load` reports success, the session
-    never opens, and nothing says why. It shows up on the first method of the
-    session, not on the first tool call that session never gets to make."""
+    """The failure this catches: a server registered without the marker works
+    normally until the first tool call is refused, and nothing says why. It is
+    announced on the first method of the session instead."""
     config, upstream, client, operator = stand
     body = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
-    response = await post(client, config, upstream.port, body, "/mcp-forgotten")
+    response = await post(client, upstream.port, body, None)
 
     event = await operator.next_of(protocol.Message.EVENT)
     assert event["kind"] == protocol.Event.UNKNOWN_SANDBOX
     assert event["method"] == "initialize"
     assert event["tool"] is None
 
-    # Forwarded, not refused: with the suffix unrecognised the path was never
-    # rewritten, so upstream turns it down by itself.
-    assert response.status_code == 404
-    assert upstream.paths == ["/mcp-forgotten"]
+    # Forwarded: initialize has no side effect to prevent, and a session that
+    # opens is what lets the agent be told at the point it tries to act.
+    assert response.status_code == 200
+    assert upstream.seen == [body]
 
 
-async def test_unknown_sandbox_suffix_is_refused_and_announced(stand):
+async def test_an_unknown_sandbox_marker_is_refused_and_announced(stand):
     config, upstream, client, operator = stand
-    response = await post(client, config, upstream.port, call("save_issue"), "/mcp-nope")
+    response = await post(client, upstream.port, call("save_issue"), "nope")
 
     assert response.json()["result"]["isError"] is True
     assert upstream.seen == []
@@ -237,7 +244,7 @@ async def test_unknown_sandbox_suffix_is_refused_and_announced(stand):
 async def test_a_json_rpc_batch_is_refused(stand):
     """MCP dropped batching in 2025-06-18; an array must not sail through."""
     config, upstream, client, operator = stand
-    response = await post(client, config, upstream.port, [call("save_issue")], "/mcp-sbx")
+    response = await post(client, upstream.port, [call("save_issue")])
 
     assert response.status_code == 200
     # INVALID_REQUEST: a batch really is not a valid MCP request object.
@@ -252,7 +259,7 @@ async def test_an_oversized_body_is_refused_unparsed(stand):
     """Too big to inspect is too big to vouch for."""
     config, upstream, client, operator = stand
     body = call("save_issue", title="x" * (MAX_BODY + 1))
-    response = await post(client, config, upstream.port, body, "/mcp-sbx")
+    response = await post(client, upstream.port, body)
 
     assert response.status_code == 200
     # A server error, not INVALID_REQUEST: nothing was parsed, so the request
@@ -265,7 +272,7 @@ async def test_an_oversized_body_is_refused_unparsed(stand):
 async def test_non_tool_traffic_is_never_held(stand):
     config, upstream, client, operator = stand
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
-    response = await post(client, config, upstream.port, body, "/mcp-sbx")
+    response = await post(client, upstream.port, body)
 
     assert response.status_code == 200
     assert upstream.seen == [body]
@@ -283,7 +290,7 @@ async def test_a_second_operator_is_told_who_answered(stand):
         await other.next_of(protocol.Message.HELLO)
 
         pending = asyncio.create_task(
-            post(client, config, upstream.port, call("save_issue"), "/mcp-sbx")
+            post(client, upstream.port, call("save_issue"))
         )
         held = await operator.next_of(protocol.Message.REQUEST)
         assert (await other.next_of(protocol.Message.REQUEST))["request"]["id"] == held["request"]["id"]
@@ -298,7 +305,7 @@ async def test_a_late_operator_is_handed_the_backlog(stand):
     """The call is held with nobody watching; attaching replays it."""
     config, upstream, client, operator = stand
     pending = asyncio.create_task(
-        post(client, config, upstream.port, call("save_issue"), "/mcp-sbx")
+        post(client, upstream.port, call("save_issue"))
     )
     held = await operator.next_of(protocol.Message.REQUEST)
 
@@ -318,7 +325,7 @@ async def test_dropping_the_socket_does_not_release_the_call(stand):
     """The prompt outlives the connection that displayed it."""
     config, upstream, client, operator = stand
     pending = asyncio.create_task(
-        post(client, config, upstream.port, call("save_issue"), "/mcp-sbx")
+        post(client, upstream.port, call("save_issue"))
     )
     held = await operator.next_of(protocol.Message.REQUEST)
     await operator.ws.close()
@@ -347,7 +354,10 @@ async def test_event_streams_are_relayed_as_they_arrive(stand):
     config, upstream, client, operator = stand
     body = call("stream_me")
     request = client.build_request(
-        "POST", f"https://localhost:{upstream.port}/mcp-sbx", json=body
+        "POST",
+        f"https://localhost:{upstream.port}/mcp",
+        json=body,
+        headers={SANDBOX_HEADER: "sbx"},
     )
     # send() waits for response headers, which will not come until the call is
     # approved — so it has to be in flight before the answer goes out.
@@ -385,7 +395,7 @@ async def test_a_token_is_attached_for_a_known_sandbox(stand):
     """The credential lives on the host and is added on the way out."""
     config, upstream, client, operator = stand
     pending = asyncio.create_task(
-        post(client, config, upstream.port, call("save_issue"), "/mcp-sbx")
+        post(client, upstream.port, call("save_issue"))
     )
     held = await operator.next_of(protocol.Message.REQUEST)
     await operator.answer(held["request"]["id"], "once")
@@ -402,7 +412,7 @@ async def test_no_token_without_a_known_sandbox(stand):
     """An anonymous caller is not one to lend a credential to."""
     config, upstream, client, operator = stand
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
-    await post(client, config, upstream.port, body, "/mcp")
+    await post(client, upstream.port, body, None)
 
     assert upstream.authorization == [None]
 
@@ -410,7 +420,7 @@ async def test_no_token_without_a_known_sandbox(stand):
 async def test_nothing_is_attached_when_no_token_is_configured(stand):
     config, upstream, client, operator = stand
     pending = asyncio.create_task(
-        post(client, config, upstream.port, call("save_issue"), "/mcp-sbx")
+        post(client, upstream.port, call("save_issue"))
     )
     held = await operator.next_of(protocol.Message.REQUEST)
     await operator.answer(held["request"]["id"], "once")
