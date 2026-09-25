@@ -108,6 +108,11 @@ setup:
     - command: ["python3", "/opt/sbx/init-config.py"]
       user: "1000"
       description: Re-apply config on restart
+    # A startup entry, not install: a background process has to be started on
+    # every boot. setsid detaches it from the dispatcher.
+    - command: ["setsid", "-f", "bash", "/opt/sbx/cache-trim.sh"]
+      user: "0"
+      description: Trim the page cache so memory goes back to the host
   files:
     - path: /home/agent/.sbx-workdir
       content: "${WORKDIR}"

@@ -27,6 +27,7 @@ sbx-dotfiles/
             shim-lib.sh           # helper sourced by the uv wrapper
             claude-backup-lib.sh  # archive paths and what to leave out, sourced by both
             docker-daemon.sh      # stop/start dockerd, sourced by the docker-* commands
+            cache-trim.sh         # background loop that keeps the page cache small
             init-config.py        # lays out ~/.claude on startup (idempotent)
             claude-settings.json.example # sample settings.json
             claude-settings.json  # your settings.json, deep-merged over the base (gitignored)
@@ -211,15 +212,22 @@ Outside a repo it prints nothing, and a status over 40 lines is truncated.
 ## Returning memory to the host
 
 The VM does not give memory back to Windows on its own: whatever it has read
-from disk stays in the page cache, and to the host that is memory in use. Run
+from disk stays in the page cache, and to the host that is memory in use. The
+balloon device's free page reporting returns every free 2 MiB block within
+about a second, so the job is to keep the cache small and the free memory
+unfragmented. Memory held by processes (dockerd, containers, the agent) stays
+either way.
+
+The kit starts `cache-trim.sh` as root on every boot. Every 30 s it reclaims up
+to 512 MiB of the coldest file cache above 1 GiB (through the root cgroup's
+`memory.reclaim`, so hot files stay cached), then compacts. The thresholds are
+the `CACHE_TRIM_*` variables at the top of the script.
+
+To drop all of the cache at once:
 
 ```bash
 free-mem
 ```
-
-to drop the caches and compact what is left. The balloon device's free page
-reporting then returns every free 2 MiB block to the host within about a
-second. Memory held by processes (dockerd, containers, the agent) stays.
 
 ## Permission mode
 
