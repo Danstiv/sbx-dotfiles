@@ -22,6 +22,7 @@ sbx-dotfiles/
             docker-restore        # restore such a snapshot
             play-sound            # ask the host's http_player to play a sound (hooks)
             git-context           # UserPromptSubmit hook: current git state into the prompt
+            free-mem              # drop caches so the VM hands memory back to the host
         scripts/                  # -> /opt/sbx, plain data
             shim-lib.sh           # helper sourced by the uv wrapper
             claude-backup-lib.sh  # archive paths and what to leave out, sourced by both
@@ -206,6 +207,19 @@ prompt gets a `<git-state>` block with `git status --short --branch` and the
 last five commits.
 
 Outside a repo it prints nothing, and a status over 40 lines is truncated.
+
+## Returning memory to the host
+
+The VM does not give memory back to Windows on its own: whatever it has read
+from disk stays in the page cache, and to the host that is memory in use. Run
+
+```bash
+free-mem
+```
+
+to drop the caches and compact what is left. The balloon device's free page
+reporting then returns every free 2 MiB block to the host within about a
+second. Memory held by processes (dockerd, containers, the agent) stays.
 
 ## Permission mode
 

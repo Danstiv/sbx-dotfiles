@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Hand the VM's idle memory back to the Windows host.
+#
+# The balloon device has free page reporting on (page_reporting_order=9): the
+# guest returns every free, contiguous 2 MiB block to the host within ~0.5 s.
+# What keeps memory from going back is the page cache, which Linux holds on to
+# as long as nothing else wants it, and fragmentation, since a block with one
+# page in use is not reported. So: drop the caches, then compact.
+#
+# Only caches are freed — process memory (dockerd, containers, claude) and tmpfs
+# stay. Nothing is lost: the next read just goes to disk again.
+set -eu
+
+sudo=
+[ "$(id -u)" -eq 0 ] || sudo=sudo
+
+mem_used_mib() {
+  free -m | awk '/^Mem:/ { print $2 - $4 }'
+}
+
+before=$(mem_used_mib)
+
+sync
+echo 3 | $sudo tee /proc/sys/vm/drop_caches >/dev/null
+echo 1 | $sudo tee /proc/sys/vm/compact_memory >/dev/null
+
+after=$(mem_used_mib)
+echo "in use: ${before} MiB -> ${after} MiB (freed $((before - after)) MiB)"
