@@ -265,8 +265,14 @@ So `bin/uv` is a wrapper: it walks up from the current directory to the nearest
 `pyproject.toml` and points `UV_PROJECT_ENVIRONMENT` at
 `~/.venvs/<repo>-<hash>`, on the VM's native filesystem. Nothing to set up —
 `uv sync` in any repo just works, and each repo gets its own environment.
-Set `UV_PROJECT_ENVIRONMENT` or `VIRTUAL_ENV` yourself and the wrapper stays out
-of the way; `SBX_VENV_DIR` moves where the venvs are kept.
+Set `UV_PROJECT_ENVIRONMENT` yourself and the wrapper stays out of the way;
+`SBX_VENV_DIR` moves where the venvs are kept. An activated venv does not switch
+it off: uv ignores `VIRTUAL_ENV` for project commands (short of `--active`) and
+would fall back to `./.venv`.
+
+`uv venv` outside a project (no `pyproject.toml` up the tree) ignores
+`UV_PROJECT_ENVIRONMENT` and creates `./.venv` — pass it a path, e.g.
+`uv venv ~/.venvs/scratch`.
 
 The visible trade-off: **there is no `./.venv` in the repo** — use `uv run`. As a
 side effect a Windows-side `.venv` in the same folder is never touched.

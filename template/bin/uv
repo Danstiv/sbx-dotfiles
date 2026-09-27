@@ -17,8 +17,11 @@
 # non-interactive Bash tool as well.
 #
 #   UV_PROJECT_ENVIRONMENT   already set -> respected, the wrapper stays out
-#   VIRTUAL_ENV              an activated venv wins too
 #   SBX_VENV_DIR             where venvs are kept (default ~/.venvs)
+#
+# VIRTUAL_ENV must not disable the wrapper: uv ignores an active venv for project
+# commands (unless --active) and falls back to ./.venv, so after
+# `source ~/.venvs/.../bin/activate` every command would recreate it.
 set -u
 
 source /opt/sbx/shim-lib.sh
@@ -34,7 +37,7 @@ project_root() {
   return 1
 }
 
-if [ -z "${UV_PROJECT_ENVIRONMENT:-}" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
+if [ -z "${UV_PROJECT_ENVIRONMENT:-}" ]; then
   if root=$(project_root); then
     # Readable but collision-free: the repo name plus a hash of its full path.
     name=$(basename "$root")-$(printf '%s' "$root" | sha1sum | cut -c1-12)
