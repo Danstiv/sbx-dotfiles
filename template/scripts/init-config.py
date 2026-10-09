@@ -58,7 +58,8 @@ def seed_app_state():
     # ~/.claude.json is answered-dialog state, wiped with the sandbox. Without
     # these a fresh VM greets the first session with onboarding, the
     # "trust this folder?" prompt and the "make auto mode the default?" nudge.
-    # The kit does not extend sbx's claude kit, whose install step used to
+    # leftArrowOpensAgents is off because a stray ← on an empty prompt jumps
+    # to the agents view; no keybinding action exists to move it. The kit does not extend sbx's claude kit, whose install step used to
     # seed the first two.
     state = {}
     if APP_STATE.exists():
@@ -66,7 +67,11 @@ def seed_app_state():
             state = json.loads(APP_STATE.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return
-    desired = {"hasCompletedOnboarding": True, "hasSeenAutoDefaultNudge": True}
+    desired = {
+        "hasCompletedOnboarding": True,
+        "hasSeenAutoDefaultNudge": True,
+        "leftArrowOpensAgents": False,
+    }
     trusted = {"/": {"hasTrustDialogAccepted": True}}
     workdir = get_workdir()
     if workdir is not None:
