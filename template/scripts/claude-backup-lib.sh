@@ -31,10 +31,10 @@ get_default_dir() {
 # clock instead of overwriting; a suffix would break the sort by name below.
 build_archive_path() {
   local dir="${1%/}" path
-  path="$dir/claude-home-$(date +%Y%m%d-%H%M%S).tar.zst"
+  path="$dir/claude-home-$(date +%Y-%m-%d-%H-%M-%S).tar.zst"
   while [ -e "$path" ]; do
     sleep 1
-    path="$dir/claude-home-$(date +%Y%m%d-%H%M%S).tar.zst"
+    path="$dir/claude-home-$(date +%Y-%m-%d-%H-%M-%S).tar.zst"
   done
   printf '%s' "$path"
 }

@@ -136,7 +136,7 @@ recreate `~/.claude` (session history, memory, config edits) is wiped. Two
 commands are baked into the image:
 
 ```bash
-claude-backup            # -> ./claude-backups/claude-home-20260917-143002.tar.zst
+claude-backup            # -> ./claude-backups/claude-home-2026-09-17-14-30-02.tar.zst
 claude-restore           # <- newest archive in ./claude-backups/
 
 claude-backup <dir>      # timestamped file in that directory
