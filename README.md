@@ -95,8 +95,10 @@ then goes out under that sandbox's identity.
 
 There is no audio inside the VM, and the sandbox blocks raw UDP/TCP at the
 network layer — the only way out is HTTP to the host. So the `Stop` and
-`Notification` hooks in the settings just POST to a small player running on the
-host.
+`PermissionRequest` hooks in the settings just POST to a small player running on
+the host. The prompt sound hangs on `PermissionRequest` because it fires the
+moment the dialog appears; `Notification`/`permission_prompt` waits for about six
+seconds without typing and never fires if you answer sooner.
 
 Nothing for that is shipped here. If you want sounds, grab a release of
 [http_player](https://github.com/25k1/http_player) (prebuilt for Windows and
