@@ -33,6 +33,13 @@ sbx policy allow network --sandbox ${SANDBOX_NAME} <host>[:<port>]
 A hostname opens exactly that host. To open a domain together with all its
 subdomains, write `**.example.com`.
 
+When several hosts are needed, give one command with the hosts comma-separated
+(no spaces), not one command per host:
+
+```powershell
+sbx policy allow network --sandbox ${SANDBOX_NAME} pypi.org,files.pythonhosted.org
+```
+
 Without `--sandbox` the rule is global and opens the domain for every sandbox —
 only offer that if the user asks for it.
 
