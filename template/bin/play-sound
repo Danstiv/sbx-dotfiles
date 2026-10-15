@@ -36,7 +36,9 @@ else
   payload=$(printf '{"file_name": "%s"}' "$name")
 fi
 
-curl -s -m 3 -o /dev/null \
+# --noproxy: the sbx proxy drops its connection to the player after 90 s idle and
+# takes ~2 s to open a new one, so through it the sound after a long turn is late.
+curl -s -m 3 -o /dev/null --noproxy '*' \
   -X POST "http://${SBX_PLAYER_HOST:-host.docker.internal}:${SBX_PLAYER_PORT:-57919}/play" \
   -H 'Content-Type: application/json' \
   -d "$payload" 2>/dev/null
