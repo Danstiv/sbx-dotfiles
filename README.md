@@ -111,7 +111,9 @@ one needs the rule added by hand.
 
 The hooks are just `play-sound stop` and `play-sound prompt` — that command
 wraps the request and assumes http_player's defaults (port `57919`, sounds named
-`stop.wav` and `prompt.wav`). See the script for the rest.
+`stop.wav` and `prompt.wav`). See the script for the rest. The stop sound is
+skipped while any of the hook input's `background_tasks` is still `running`: the
+turn ended, but the session is not done and will wake up again when they finish.
 
 ## Personal config
 
